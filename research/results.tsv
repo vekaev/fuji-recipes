@@ -8,3 +8,8 @@ commit	dev	held_out	kept	description
 -	25.1	-50.8	discarded	drop median brightness feature
 -	26.4	-50.5	discarded	drop grain and local contrast features
 -	25.2	-52.8	discarded	drop saturatedL feature
+7676c0d	31.0	-50.5	kept	drop shadow cast feature
+-	20.1	-53.1	discarded	film vote divided by sqrt of the film's share in the library (less Classic Neg bias)
+-	30.3	-46.6	discarded	WB shift shrunk 20% toward neutral
+-	28.4	-55.5	discarded	drop highlight cast feature
+-	26.1	-49.9	discarded	drop chroma90 feature
