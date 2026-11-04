@@ -43,6 +43,9 @@ by how it looks, not by its numbers, so the photos come first and the settings s
   you last shot with it, looks to swap in, and its history, so you can put the old one back. Changes are staged and
   written right away: a backup first, a read-back after, Undo in the message. FS1–FS3 (the film simulation dial) are
   written too, through the camera's settings file; their WB shift and B&W toning stay as set on the camera for now.
+- **Studio**: pick one of your RAW photos and see it developed by your camera with each recipe, side by side, the way
+  FUJIFILM X RAW Studio does it (the camera does the work, so it's the real look). Renders are kept, so the sheet opens
+  instantly next time; ♡ the ones you like.
 - **Add recipes**: paste or drop Instagram / TikTok / YouTube links (many at once) or Instagram's saved-posts export.
   Claude reads the reels on the Mac (`/recipe`, `fuji_inbox`), and you keep or skip each one here.
 - No camera yet: a step-by-step guide to the camera's USB mode, with a live connection check.
@@ -178,6 +181,11 @@ and on. You decide.
 Protocol facts from [zgrimz/fujifilm-ptp-reference](https://github.com/zgrimz/fujifilm-ptp-reference) (CC BY 4.0),
 [ILFforever/fujifilm-ptp-recipes](https://github.com/ILFforever/fujifilm-ptp-recipes), FilmKit and libfuji (MIT).
 Thank you. MIT licence.
+
+## Tests
+
+`scripts/test.sh` runs everything against a simulated X-E5 and a throwaway library: the FujiKit tests, the real
+`fuji mcp` binary driven like Claude, and the iPhone app's UI tests in the simulator.
 
 ## Releasing
 

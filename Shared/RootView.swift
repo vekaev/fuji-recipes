@@ -27,6 +27,7 @@ struct RootView: View {
                 TabView(selection: $model.tab) {
                     page(.looks).tabItem { Label("Recipes", systemImage: "square.grid.2x2") }.tag(AppModel.Tab.looks)
                     page(.camera).tabItem { Label(model.connected ? (model.info?.model ?? "Camera") : "Camera", systemImage: "camera") }.tag(AppModel.Tab.camera)
+                    page(.studio).tabItem { Label("Studio", systemImage: "square.stack.3d.down.right") }.tag(AppModel.Tab.studio)
                     page(.inbox).tabItem { Label("Add", systemImage: "plus.square.on.square") }.tag(AppModel.Tab.inbox)
                         .badge(model.toReview.count)
                 }
@@ -39,6 +40,7 @@ struct RootView: View {
             if let t = model.toast {
                 HStack(spacing: 12) {
                     Text(t).font(.system(size: 12.5)).foregroundStyle(.white).multilineTextAlignment(.center)
+                        .accessibilityIdentifier("toast")
                     if let a = model.toastAction {
                         Button(a.title) { model.toast = nil; model.toastAction = nil; a.run() }
                             .buttonStyle(.plain).pointer().font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
@@ -97,6 +99,7 @@ struct RootView: View {
         switch t {
         case .looks: LooksView()
         case .camera: if regular { LooksView() } else { CameraView() }   // Mac / iPad: slots live beside the looks
+        case .studio: StudioView()
         case .inbox: InboxView()
         }
     }
@@ -113,6 +116,7 @@ private struct TopBar: View {
     var body: some View {
         HStack(spacing: 2) {
             tab(.looks) { Text("Recipes") }
+            tab(.studio) { Text("Studio") }
             tab(.inbox) {
                 HStack(spacing: 4) {
                     Text("Add recipes")
@@ -189,7 +193,7 @@ struct PreviewOverlay: View {
                 Color.black.opacity(0.92).ignoresSafeArea().onTapGesture { model.preview = nil }
                 VStack(spacing: 12) {
                     HStack {
-                        Text(p.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                        Text(p.titles.map { $0[min(p.index, $0.count - 1)] } ?? p.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
                         Text("\(p.index + 1) / \(p.paths.count)").font(.system(size: 13)).foregroundStyle(.white.opacity(0.6)).monospacedDigit()
                         Spacer()
                         Button { model.preview = nil } label: { Image(systemName: "xmark").font(.system(size: 15, weight: .medium)).foregroundStyle(.white).frame(width: 36, height: 36) }

@@ -72,3 +72,26 @@ targets:
         MARKETING_VERSION: "0.2.0"
         CURRENT_PROJECT_VERSION: "2"
         CODE_SIGN_STYLE: Automatic
+  FujiRecipesUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: FujiRecipes-iOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.fujirecipes.uitests
+        TEST_TARGET_NAME: FujiRecipes-iOS
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+schemes:
+  FujiRecipes-iOS:
+    build:
+      targets:
+        FujiRecipes-iOS: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - FujiRecipesUITests

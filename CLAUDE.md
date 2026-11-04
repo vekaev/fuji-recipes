@@ -94,6 +94,7 @@ Shared with `/recipe` and `fuji mcp`: field names in skills/fuji-recipes/referen
 | Instant writes: drop / Put in / Put back / dial edits go straight to the camera (slot backup, read-back, Undo in the toast); "Ask before writing" setting brings the review back | ✓ (Settings, ⋯, Camera menu) | ✓ (Camera tab toggle on iPhone; ⋯ on iPad) | plan → approve → apply (unchanged) |
 | Same recipe in two slots: ⧉ in the slot column (hover: "Same recipe as C3"), "also in C3" on iPhone, "same recipe as C3" on the slot page; FS compared without WB shift / toning | ✓ | ✓ | — |
 | Camera limits: a slot still shows its recipe when the camera kept a lower DR (DR200/DR400 need the slot's hidden ISO ≥ 320/640; not settable over USB) or dropped B&W toning; the slot page says what differs; refusals are explained in the message with the on-camera fix (`RecipeSettings.cameraLimitedDifferences`, `Library.matchOnCamera`) | ✓ | ✓ | `fuji_slots` → `cameraLimits` |
+| Studio: one RAW (.RAF, same model) developed by the camera with each recipe (upload once 0x900C/D, profile 0xD185 per recipe, trigger 0xD183, fetch + delete the new object; `FujiKit/Render.swift`), cached in `renders/`, grid + big preview to compare, ♡ per tile; filters Favorites & to try / All / ♡ / To try / tags | ✓ Studio tab (⌘2), drop or choose a RAF | ✓ Studio tab; the RAF is copied into the library | `fuji_render`, `fuji render <raf> [recipes]` |
 | Slot history + Put back | ✓ | ✓ | `fuji_slot_history` |
 | Add recipes (was Inbox, then New looks): paste/drop links, Instagram export, Keep/Skip | ✓ (drop, paste) | ✓ (paste; share extension: later) | `fuji_inbox`, `fuji_inbox_add`, `fuji_inbox_resolve` |
 | Reading reels | via Claude / `/recipe` on the Mac | queued, read on the Mac | `fuji_inbox` → `/recipe` |
@@ -101,6 +102,17 @@ Shared with `/recipe` and `fuji mcp`: field names in skills/fuji-recipes/referen
 | FS1–FS3 (film simulation dial) | ✓ drop / Put in / Undo (WB shift, toning kept) | ✓ same | `fuji_plan_write` slot "FS1"…"FS3" → approve → `fuji_apply_write` |
 | Reference scenes rendered by the camera | not yet (ADR 0003 spike) | not yet | not yet |
 | Recipes from your photos' EXIF | ✓ (exiftool) | n/a (no exiftool on iOS; the Mac fills the library) | `fuji_import_photos` |
+
+## Tests (run `scripts/test.sh` before saying anything works)
+
+- `swift test`: FujiKitTests (codec, settings file, FS writes, session rule, DR gate, studio rendering, inbox,
+  history) against `SimulatedCamera`, which models the X-E5's refusals, settings file + checksum, hidden-ISO DR gate
+  and RAW development; FujiCLITests run the real `fuji mcp` binary over JSON-RPC like Claude (simulated camera,
+  throwaway library).
+- `FujiRecipesUITests` (scheme FujiRecipes-iOS → test): the iPhone app with `-uiTesting` (throwaway library seeded by
+  `AppModel.uiTestLibrary`, simulated X-E5): rename a recipe, put one in C3 + Undo, Studio render + preview, add links.
+  New screens get an accessibility identifier and a UI test here. Mac UI tests: not added (they'd drive the owner's
+  screen); the Mac shares the same views and model.
 
 ## Shipping
 

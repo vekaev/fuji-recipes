@@ -218,7 +218,7 @@ struct RecipeSettingsSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     if let r = draft {
-                        TextField("Name", text: bind(\.name)).textFieldStyle(.plain)
+                        TextField("Name", text: bind(\.name)).textFieldStyle(.plain).accessibilityIdentifier("recipe.name")
                             .font(.system(size: 28, weight: .heavy)).tracking(-0.6)
                         Text(model.whereabouts(r)).font(.system(size: 13)).foregroundStyle(.secondary)
                         field("Description") {
@@ -280,7 +280,7 @@ struct RecipeSettingsSheet: View {
                 Spacer()
                 if draft != nil && draft != original {
                     Button("Cancel") { model.sheetWillClose = nil; model.closeSheet() }.buttonStyle(.plain).pointer()
-                    PillButton(title: "Save", primary: true) { save() }.keyboardShortcut(.defaultAction)
+                    PillButton(title: "Save", primary: true) { save() }.accessibilityIdentifier("recipe.save").keyboardShortcut(.defaultAction)
                 } else {
                     PillButton(title: "Done", primary: true) { model.closeSheet() }.keyboardShortcut(.defaultAction)
                 }

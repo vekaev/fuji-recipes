@@ -86,13 +86,14 @@ struct InboxView: View {
             let field = TextField(text: $pasted, axis: .vertical) { Text(verbatim: "https://www.instagram.com/reel/…") }
                 .textFieldStyle(.plain).font(.system(size: 13, design: .monospaced)).lineLimit(1...4)
                 .autocorrectionDisabled()
+                .accessibilityIdentifier("add.field")
                 #if os(iOS)
                 .textInputAutocapitalization(.never).keyboardType(.URL)
                 #endif
                 .padding(9).background(Theme.paper, in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.line))
             let buttons = Group {
-                PillButton(title: "Add", primary: true) { model.addToInbox(text: pasted); pasted = "" }
+                PillButton(title: "Add", primary: true) { model.addToInbox(text: pasted); pasted = "" }.accessibilityIdentifier("add.button")
                     .disabled(pasted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 PillButton(title: "Import file…") { importing = true }
             }

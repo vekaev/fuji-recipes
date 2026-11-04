@@ -6,7 +6,7 @@ import SwiftUI
 @main
 struct FujiRecipesApp: App {
     @AppStorage(AppAppearance.key) private var appearance: AppAppearance = .system
-    @State private var model = AppModel(library: LibraryBookmark.restore() ?? Library())
+    @State private var model = AppModel(library: AppModel.uiTestLibrary() ?? LibraryBookmark.restore() ?? Library())
 
     var body: some Scene {
         WindowGroup {

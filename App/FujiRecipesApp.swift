@@ -4,7 +4,7 @@ import SwiftUI
 @main
 struct FujiRecipesApp: App {
     @AppStorage(AppAppearance.key) private var appearance: AppAppearance = .system
-    @State private var model = AppModel()
+    @State private var model = AppModel(library: AppModel.uiTestLibrary() ?? Library())
 
     init() { _ = Updater.shared }   // Sparkle: a daily check against the latest GitHub release
 
@@ -23,7 +23,8 @@ struct FujiRecipesApp: App {
             CommandGroup(after: .appInfo) { CheckForUpdatesButton() }
             CommandGroup(after: .sidebar) {
                 Button("Recipes") { model.tab = .looks }.keyboardShortcut("1")
-                Button("Add Recipes") { model.tab = .inbox }.keyboardShortcut("2")
+                Button("Studio") { model.tab = .studio }.keyboardShortcut("2")
+                Button("Add Recipes") { model.tab = .inbox }.keyboardShortcut("3")
             }
             CommandMenu("Camera") {
                 Button("Check Connection") { Task { await model.check() } }.keyboardShortcut("r")

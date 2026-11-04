@@ -126,7 +126,7 @@ public final class SimulatedCamera: PTPTransport, @unchecked Sendable {
             var d = Data(); func w32(_ v: UInt32) { for k in 0..<4 { d.append(UInt8((v >> (8 * UInt32(k))) & 0xFF)) } }
             w32(UInt32(objects.count)); objects.keys.sorted().forEach(w32)
             return PTPResult(code: PTPCode.ok, data: d)
-        case RenderOp.getThumb, RenderOp.getObject where params.first != 0:
+        case RenderOp.getThumb where params.first != 0, RenderOp.getObject where params.first != 0:
             guard let o = objects[params.first ?? 0] else { return PTPResult(code: PTPCode.generalError) }
             return PTPResult(code: PTPCode.ok, data: o)
         case RenderOp.deleteObject:
@@ -198,7 +198,7 @@ public final class SimulatedCamera: PTPTransport, @unchecked Sendable {
     }
 
     /// A small JPEG whose colour comes from the profile (film, colour, WB shift): different recipes, different images.
-    static func renderJPEG(_ p: ConversionProfile, full: Bool) -> Data {
+    public static func renderJPEG(_ p: ConversionProfile, full: Bool) -> Data {
         let w = full ? 96 : 64, h = full ? 64 : 48
         let film = Int(p[8]), mono = Film.isMonochrome(Film.all[max(0, min(19, film - 1))])
         let base = Double(film) / 20

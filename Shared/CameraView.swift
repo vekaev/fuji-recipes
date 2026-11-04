@@ -80,7 +80,7 @@ private struct SlotList: View {
                     model.put(r, in: s.id); return true
                 }
         } else {
-            NavigationLink(value: s.id) { content(s).background(Theme.card, in: RoundedRectangle(cornerRadius: 16)) }.buttonStyle(.plain).pointer()
+            NavigationLink(value: s.id) { content(s).background(Theme.card, in: RoundedRectangle(cornerRadius: 16)) }.buttonStyle(.plain).accessibilityIdentifier("slot.\(s.id)").pointer()
         }
     }
 

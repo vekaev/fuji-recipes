@@ -9,7 +9,7 @@ import SwiftUI
 /// record in the slot history.
 @MainActor @Observable
 final class AppModel {
-    enum Tab: String, CaseIterable, Identifiable { case looks, camera, inbox; var id: String { rawValue } }
+    enum Tab: String, CaseIterable, Identifiable { case looks, camera, studio, inbox; var id: String { rawValue } }
     enum Sheet: String, Identifiable { case help, trouble, backups, review, settings, slot, connect; var id: String { rawValue } }
 
     struct Slot: Identifiable, Equatable {
@@ -24,7 +24,7 @@ final class AppModel {
         var unused: Bool { cam == RecipeSettings.factory && camName.isEmpty }
     }
 
-    struct Preview: Equatable { var title: String; var paths: [String]; var index: Int }
+    struct Preview: Equatable { var title: String; var paths: [String]; var index: Int; var titles: [String]? = nil }
 
     var tab: Tab = .looks
     var sheet: Sheet?
@@ -77,10 +77,40 @@ final class AppModel {
 
     init(library: Library = Library()) { self.library = library }
 
+    /// UI tests (`-uiTesting`): a throwaway library with three recipes, sample photos and a RAW, the simulated X-E5,
+    /// instant writes. Nothing touches the owner's library or camera.
+    static func uiTestLibrary() -> Library? {
+        guard CommandLine.arguments.contains("-uiTesting") else { return nil }
+        Cameras.shared.simulate = true
+        UserDefaults.standard.set(false, forKey: "askBeforeWriting")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("fuji-uitest-\(ProcessInfo.processInfo.processIdentifier)")
+        try? FileManager.default.removeItem(at: root)
+        let lib = Library(root: root)
+        let seeds: [(String, String, Int, String)] = [("UI Chrome", "Classic Chrome", 2, "favorite"), ("UI Acros", "Acros+R", 0, "to-try"), ("UI Neg", "Classic Neg.", 4, "to-try")]
+        for (name, film, color, status) in seeds {
+            var s = RecipeSettings(); s.film = film; s.color = color; s.normalize()
+            var r = Recipe(slug: "", name: name, status: status, settings: s); r.tags = film.hasPrefix("Acros") ? ["B&W"] : ["Warm"]
+            if let saved = try? lib.save(r, allowDuplicate: true) {
+                let dir = root.appendingPathComponent("samples/\(saved.slug)")
+                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                var p = ConversionProfile(Data(count: ConversionProfile.base + 4 * 29)); p[8] = Int32(Film.all.firstIndex(of: film)! + 1); p[18] = Int32(color * 10)
+                try? SimulatedCamera.renderJPEG(p, full: true).write(to: dir.appendingPathComponent("1.jpg"))
+            }
+        }
+        let raw = root.appendingPathComponent("studio/DSCF0001.RAF")
+        try? FileManager.default.createDirectory(at: raw.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? (Data("FUJIFILMCCD-RAW 0201FF383501X-E5".utf8) + Data(count: 4000)).write(to: raw)
+        UserDefaults.standard.set(raw.path, forKey: "studioRaw")
+        return lib
+    }
+
     // MARK: Start, detect, read
 
     func start() {
         reload()
+        if studioRaw == nil, let p = UserDefaults.standard.string(forKey: "studioRaw"), FileManager.default.fileExists(atPath: p) {
+            studioRaw = URL(fileURLWithPath: p)
+        }
         CameraBrowser.shared.onChange = { [weak self] _, _ in Task { @MainActor in await self?.check() } }
         CameraBrowser.shared.start()
         Task { await check() }
@@ -258,10 +288,77 @@ final class AppModel {
         reload()
     }
 
-    func show(_ paths: [String], at i: Int, title: String) {
+    func show(_ paths: [String], at i: Int, title: String, titles: [String]? = nil) {
         guard !paths.isEmpty else { return }
-        preview = Preview(title: title, paths: paths, index: max(0, min(paths.count - 1, i)))
+        preview = Preview(title: title, paths: paths, index: max(0, min(paths.count - 1, i)), titles: titles)
     }
+
+    // MARK: Studio: one RAW, developed by the camera with each recipe
+
+    var studioRaw: URL? {
+        didSet { studioBase = nil; studioNotes = [:]; UserDefaults.standard.set(studioRaw?.path, forKey: "studioRaw") }
+    }
+    var studioFilter: String?           // like tagFilter: nil = favorites + to try; "all"; "status:…"; a tag
+    var studioRendering = false
+    var studioProgress = (done: 0, total: 0)
+    var studioNotes: [String: [String]] = [:]   // recipe slug → what the camera couldn't render exactly
+    var studioError: String?
+    private var studioBase: ConversionProfile?
+    private var studioTask: Task<Void, Never>?
+    private(set) var studioVersion = 0       // bumps when a render lands, so tiles reload
+
+    var studioRecipes: [Recipe] {
+        switch studioFilter {
+        case nil: let picked = recipes.filter { $0.status == "favorite" || $0.status == "to-try" }; return picked.isEmpty ? recipes : picked
+        case "all"?: return recipes
+        case let f? where f.hasPrefix("status:"): return recipes.filter { $0.status == f.dropFirst(7) }
+        case let f?: return recipes.filter { ($0.tags ?? []).contains(f) || (f == "B&W" && $0.settings.isMonochrome) }
+        }
+    }
+
+    func studioRender(_ r: Recipe) -> URL? {
+        guard let raw = studioRaw else { return nil }
+        return RenderCache(library: library).cached(raw: raw, settings: r.settings)
+    }
+
+    /// Renders every chosen recipe that isn't cached yet, one at a time, on the connected camera.
+    func renderStudio() {
+        guard let raw = studioRaw, !studioRendering else { return }
+        let todo = studioRecipes.filter { studioRender($0) == nil }
+        guard !todo.isEmpty else { say("Every recipe here is already rendered"); return }
+        guard connected else { studioError = "Plug in the camera to render: it develops the RAW itself."; return }
+        guard !writing else { say("Writing to the camera; render in a moment"); return }
+        studioError = nil
+        studioRendering = true
+        studioProgress = (0, todo.count)
+        studioTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.studioRendering = false; self.busy = nil }
+            do {
+                guard let cam = await Cameras.shared.current() else { throw CameraError("The camera isn't connected.") }
+                if self.studioBase == nil {
+                    self.busy = "Sending the RAW to the camera…"
+                    let data = try Data(contentsOf: raw)
+                    self.studioBase = try await cam.uploadRAF(data)
+                }
+                let cache = RenderCache(library: self.library)
+                for (i, r) in todo.enumerated() {
+                    if Task.isCancelled { break }
+                    self.busy = "Rendering \(i + 1) of \(todo.count) · \(r.name)"
+                    let made = try await cam.render(r.settings, base: self.studioBase!)
+                    try cache.store(made.jpeg, raw: raw, settings: r.settings)
+                    if !made.notes.isEmpty { self.studioNotes[r.slug] = made.notes }
+                    self.studioProgress = (i + 1, todo.count)
+                    self.studioVersion += 1
+                }
+                self.say(Task.isCancelled ? "Stopped" : "Rendered \(todo.count) recipe\(todo.count == 1 ? "" : "s")")
+            } catch {
+                self.studioError = "\(error)"
+            }
+        }
+    }
+
+    func stopStudio() { studioTask?.cancel() }
 
     // MARK: Slots: stage, review, write
 
@@ -287,7 +384,7 @@ final class AppModel {
 
     /// Stage a recipe in a slot (drag onto it, or pick it). Nothing reaches the camera until Review & write.
     func put(_ r: Recipe, in slotID: String) {
-        guard let s = slots.first(where: { $0.id == slotID }) else { return }
+        guard slots.contains(where: { $0.id == slotID }) else { return }
         update(slotID) { $0.draft = r.settings; $0.name = PTPString.bankName(r.name.uppercased()) }
         selectedSlot = slotID
         if askBeforeWriting { say("\(r.name) → \(slotID) · not on the camera yet") } else { scheduleWrite(after: 0) }
