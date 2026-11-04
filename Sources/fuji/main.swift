@@ -144,7 +144,7 @@ func cli() -> Int32 {
             case .failure(let e): return fail(e)
             }
         }
-        guard let image = plainArgs.first else { print("Usage: fuji match <photo> [file.raf] [--budget N] [--save \"Name\"] | fuji match --evaluate"); return 2 }
+        guard let image = plainArgs.first else { print("Usage: fuji match <photo> [file.raf] [--budget N] [--save \"Name\"] | fuji match --evaluate | fuji match --benchmark [file.raf] [--cases N] [--seed N]"); return 2 }
         var args: [String: Any] = ["image": image]
         if plainArgs.count > 1 { args["raw"] = plainArgs[1] }
         if let i = rest.firstIndex(of: "--budget"), i + 1 < rest.count, let n = Int(rest[i + 1]) { args["budget"] = n }
