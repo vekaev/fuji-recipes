@@ -68,6 +68,20 @@ public struct DeviceInfo: Codable, Sendable {
         firmware = PTPString.decode(d, at: &o)
         serial = PTPString.decode(d, at: &o)
     }
+
+    /// The device properties GetDeviceInfo advertises (the third array). Not reliable for gating: bodies answer
+    /// properties they don't advertise (zgrimz 01-transport), but it shows which mode the camera is in.
+    public static func properties(_ d: Data) -> [UInt16] {
+        var o = 0
+        func u16() -> Int { defer { o += 2 }; guard o + 1 < d.count else { return 0 }; return Int(d[d.startIndex + o]) | Int(d[d.startIndex + o + 1]) << 8 }
+        func u32() -> Int { let lo = u16(); let hi = u16(); return lo | hi << 16 }
+        _ = u16(); _ = u32(); _ = u16()
+        _ = PTPString.decode(d, at: &o)
+        _ = u16()
+        for _ in 0..<2 { let n = u32(); o += 2 * min(n, 10_000) }
+        let n = min(u32(), 10_000)
+        return (0..<n).map { _ in UInt16(u16()) }
+    }
 }
 
 /// One custom slot as read from the camera.

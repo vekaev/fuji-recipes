@@ -36,8 +36,8 @@ fuji mine               # the recipes you actually shot with (your JPEGs' EXIF; 
 fuji --simulate slots   # try everything against a simulated X-E5
 ```
 
-On the camera: **MENU ▸ Connection Setting ▸ USB Setting ▸ USB RAW CONV./BACKUP RESTORE**, then plug in a USB-C
-data cable. The camera's menu is locked while it's connected in that mode.
+On the camera: **MENU ▸ SET UP ▸ NETWORK/USB SETTING ▸ CONNECTION MODE (older bodies: CONNECTION SETTING ▸ PC CONNECTION MODE) ▸ USB RAW CONV./BACKUP RESTORE**, then plug in a USB-C
+data cable. In the default card-reader mode the camera answers only a handful of properties (`fuji probe` shows them). The camera's menu is locked while it's connected in that mode.
 
 ## For agents (MCP)
 

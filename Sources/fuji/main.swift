@@ -45,6 +45,21 @@ func cli() -> Int32 {
     switch command {
     case "--version", "version": print(version); return 0
     case "status": return runTool("fuji_camera", [:])
+    case "probe":
+        // Read-only: what the camera answers (GetDeviceInfo, advertised properties, a few key properties).
+        let r = blocking { () async throws -> String in
+            let cam = try await Cameras.shared.require()
+            var out: [String] = []
+            let info = try await cam.transport.send(PTPOp.getDeviceInfo, [], data: nil)
+            out.append("GetDeviceInfo: \(PTPCode.describe(info.code)), \(info.data.count) bytes")
+            out.append("advertised properties: " + DeviceInfo.properties(info.data).map { String(format: "%04X", $0) }.joined(separator: " "))
+            for code: UInt16 in [0xD16E, 0xD15D, 0xD18C, 0xD18D, 0xD192, 0xD001, 0x5005, 0xD36B] {
+                let r = try await cam.get(code)
+                out.append(String(format: "0x%04X → ", code) + "\(PTPCode.describe(r.code)) " + r.data.map { String(format: "%02x", $0) }.joined(separator: " "))
+            }
+            return out.joined(separator: "\n")
+        }
+        switch r { case .success(let s): print(s); return 0; case .failure(let e): return fail(e) }
     case "slots": return runTool("fuji_slots", [:])
     case "recipes": return runTool("fuji_recipes", rest.first.map { ["query": $0] } ?? [:])
     case "show":
@@ -134,7 +149,7 @@ func serve() {
     ProcessInfo.processInfo.endActivity(activity)   // stdin closed: the client is gone
 }
 
-let needsCamera = ["mcp", "status", "slots", "backup", "call"].contains(command)
+let needsCamera = ["mcp", "status", "slots", "backup", "call", "probe"].contains(command)
 if needsCamera && !Cameras.shared.simulate { CameraBrowser.shared.start() }
 Thread.detachNewThread {
     if command == "mcp" { serve(); exit(0) }

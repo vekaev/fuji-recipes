@@ -50,9 +50,9 @@ final class Cameras: @unchecked Sendable {
         let fujiOnUSB = usb.contains("\"idVendor\" = 1227")
         let others = CameraBrowser.shared.allDevices.map(\.name)
         if fujiOnUSB {
-            return "A Fujifilm camera is on USB but not as a PTP camera — it's probably in USB CARD READER mode. On the camera: MENU ▸ Connection Setting ▸ PC Connection Mode (USB Setting) ▸ USB RAW CONV./BACKUP RESTORE, then unplug and plug in again."
+            return "A Fujifilm camera is on USB but not as a PTP camera: it's in USB CARD READER mode. \(USBMode.howToSet)"
         }
-        return "No Fujifilm camera found. Switch it on, connect a USB-C data cable to the Mac, and set Connection Setting ▸ USB Setting to USB RAW CONV./BACKUP RESTORE." + (others.isEmpty ? "" : " Other cameras seen: \(others.joined(separator: ", ")).")
+        return "No Fujifilm camera found. Switch it on and connect a USB-C data cable. \(USBMode.howToSet)" + (others.isEmpty ? "" : " Other cameras seen: \(others.joined(separator: ", ")).")
     }
 }
 
@@ -192,10 +192,10 @@ final class Tools: @unchecked Sendable {
                          "canReadWriteSlots": mode.canWriteSlots, "simulated": Cameras.shared.simulate]
         if mode.canWriteSlots {
             out["slots"] = try await cam.bankCount()
+            out["note"] = "The camera's menu is locked while it's connected in this mode. FS1–FS3 on a film simulation dial can't be written over USB; the dial overrides a slot's film simulation unless it's set to C."
         } else {
-            out["advice"] = "Set the camera to \(USBMode.rawConvBackupRestore.label) (MENU ▸ Connection Setting ▸ USB Setting) and plug it in again."
+            out["advice"] = "The camera is in \(mode.label) mode, where its custom slots can't be reached. \(USBMode.howToSet)"
         }
-        out["note"] = "The camera's menu is locked while it's connected in this mode. FS1–FS3 on a film simulation dial can't be written over USB; the dial overrides a slot's film simulation unless it's set to C."
         return out
     }
 
