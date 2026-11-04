@@ -122,6 +122,13 @@ func cli() -> Int32 {
             if let j = rest.firstIndex(of: "--name"), j + 1 < rest.count { args["name"] = rest[j + 1] }
             return runTool("fuji_match_look", args)
         }
+        if rest.contains("--score") {
+            // fuji match --score: the research loop's fixed evaluation, one line (research/program.md).
+            let (dev, held) = LookMatch.score(Library())
+            func r(_ x: Double) -> String { String(format: "%.1f", x) }
+            print("dev \(r(dev.score)) held-out \(r(held.score)) | dev film \(Int(dev.film * 100))% family \(Int(dev.family * 100))% wb \(r(dev.wbRed))/\(r(dev.wbBlue)) tone \(r(dev.highlight))/\(r(dev.shadow)) color \(r(dev.color)) top3 \(Int(dev.recognisedTop3 * 100))% | held film \(Int(held.film * 100))% family \(Int(held.family * 100))% wb \(r(held.wbRed))/\(r(held.wbBlue)) tone \(r(held.highlight))/\(r(held.shadow)) color \(r(held.color)) | \(dev.photos)+\(held.photos) photos")
+            return 0
+        }
         if rest.contains("--benchmark") {
             // fuji match --benchmark [file.raf] [--cases N] [--seed N]: hidden recipes, found from their renders alone.
             let n = rest.firstIndex(of: "--cases").flatMap { $0 + 1 < rest.count ? Int(rest[$0 + 1]) : nil } ?? 20
