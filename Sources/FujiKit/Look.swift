@@ -437,7 +437,13 @@ public enum LookMatch {
         for c in byFilm where done < budget { corrected.append(try await levenberg(from: c, steps: 1)) }
         corrected.sort { $0.distance < $1.distance }
         var finals: [Candidate] = []
-        for c in corrected.prefix(3) where done < budget { finals.append(try await levenberg(from: c, steps: 3)) }
+        // The first guess's film always stays in the running: it came from evidence (the library's photos) that a
+        // single render can't outweigh. (Real benchmark: a Classic Neg. photo was guessed right, then lost.)
+        var finalists = Array(corrected.prefix(3))
+        if !finalists.contains(where: { $0.settings.film == start.film }), let own = corrected.first(where: { $0.settings.film == start.film }) {
+            finalists[finalists.count - 1] = own
+        }
+        for c in finalists where done < budget { finals.append(try await levenberg(from: c, steps: 3)) }
         // 3. Polish the best one setting at a time, with what's left of the budget. (Measured on 20 random recipes:
         //    polishing three films with a third each, or Broyden updates, did worse.)
         if let top = finals.min(by: { $0.distance < $1.distance }) { _ = try await descend(from: top, until: budget) }

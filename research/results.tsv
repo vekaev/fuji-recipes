@@ -21,3 +21,6 @@ c0369b0	32.4	-49.5	kept	k=6 neighbours
 -	32.8	-28.4	discarded	WB shift shrunk 15% toward neutral
 8661815	33.2	-29.6	kept	highlight/shadow shrunk 20% toward 0
 -	32.7	-29.3	discarded	add split-toning feature (highlight warmth minus mid warmth)
+028d53e	33.6	-28.4	kept	double the weight of the casts (features repeated)
+-	31.6	-28.5	discarded	double the weight of saturation (chroma repeated)
+-	31.0	-28.3	discarded	double the weight of the tone shape
