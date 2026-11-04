@@ -116,7 +116,11 @@ struct LookCard: View {
                     .help("Edit name, description and tags")
                 Spacer(minLength: 4)
                 // Mac: shown on hover (a favorite keeps its filled heart); touch: always.
-                let show = hovering || !regular
+                #if os(macOS)
+                let show = hovering
+                #else
+                let show = true   // touch: no hover, always visible (iPad too)
+                #endif
                 favorite.opacity(show || recipe.status == "favorite" ? 1 : 0)
                 more.opacity(show ? 1 : 0)
             }
@@ -247,6 +251,12 @@ struct SlotDropRow: View {
                 .font(.system(size: 13.5, weight: empty ? .regular : .semibold))
                 .foregroundStyle(empty ? .secondary : .primary).lineLimit(1)
             Spacer(minLength: 0)
+            let dupes = model.duplicates(of: slot)
+            if !dupes.isEmpty {
+                Image(systemName: "square.on.square").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                    .help(AppModel.sameAs(dupes))
+                    .accessibilityLabel(AppModel.sameAs(dupes))
+            }
             if slot.changed { Text("● new").font(.system(size: 11, weight: .semibold)) }
         }
         .padding(.horizontal, 8).frame(minHeight: 44)

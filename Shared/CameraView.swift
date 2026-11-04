@@ -100,7 +100,8 @@ private struct SlotList: View {
                         .font(.system(size: 14, weight: empty ? .regular : .semibold)).foregroundStyle(empty ? .secondary : .primary).lineLimit(1)
                     if s.changed { Text("● new").font(.system(size: 11, weight: .semibold)) }
                 }
-                Text(empty ? "Provia defaults" : s.draft.film + (r == nil ? " · not in your recipes" : ""))
+                let dupes = model.duplicates(of: s)
+                Text(empty ? "Provia defaults" : s.draft.film + (r == nil ? " · not in your recipes" : "") + (dupes.isEmpty ? "" : " · also in " + dupes.joined(separator: ", ")))
                     .font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 0)
@@ -190,6 +191,8 @@ struct SlotDetail: View {
         if s.unused && !s.changed { return "Nothing here yet. Drop or pick a recipe below." }
         var p: [String] = []
         if s.changed { p.append(model.askBeforeWriting ? "changed, not on the camera yet" : "writing…") }
+        let dupes = model.duplicates(of: s)
+        if !dupes.isEmpty { p.append("same recipe as " + dupes.joined(separator: " and ")) }
         if let from = hist.first?.from { p.append("since \(AppModel.short(from))") }
         if let r {
             if let last = r.lastShot { p.append("last used \(AppModel.short(last))") }

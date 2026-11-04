@@ -92,6 +92,7 @@ Shared with `/recipe` and `fuji mcp`: field names in skills/fuji-recipes/referen
 | Click/tap an image → preview, arrows / swipe between images and recipes | ✓ (Space / Esc) | ✓ (tap, swipe) | — |
 | Slots: Mac / wide iPad have two tabs (Recipes, Add recipes); the slot column beside the looks takes drops, a click opens the slot's page as a modal (photos, since / last used, swap in, history + Put back, Settings › dials). iPhone keeps a Camera tab (no room for a column). No camera: "Connect camera" in the top bar opens the guide as a modal | ✓ drag onto a slot, click a slot | ✓ Camera tab: tap a slot, pick a look; iPad regular = Mac | `fuji_slots`, `fuji_plan_write` / `fuji_apply_write` |
 | Instant writes: drop / Put in / Put back / dial edits go straight to the camera (slot backup, read-back, Undo in the toast); "Ask before writing" setting brings the review back | ✓ (Settings, ⋯, Camera menu) | ✓ (Camera tab toggle on iPhone; ⋯ on iPad) | plan → approve → apply (unchanged) |
+| Same recipe in two slots: ⧉ in the slot column (hover: "Same recipe as C3"), "also in C3" on iPhone, "same recipe as C3" on the slot page; FS compared without WB shift / toning | ✓ | ✓ | — |
 | Slot history + Put back | ✓ | ✓ | `fuji_slot_history` |
 | Add recipes (was Inbox, then New looks): paste/drop links, Instagram export, Keep/Skip | ✓ (drop, paste) | ✓ (paste; share extension: later) | `fuji_inbox`, `fuji_inbox_add`, `fuji_inbox_resolve` |
 | Reading reels | via Claude / `/recipe` on the Mac | queued, read on the Mac | `fuji_inbox` → `/recipe` |

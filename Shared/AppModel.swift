@@ -299,6 +299,26 @@ final class AppModel {
         try? data.write(to: dir.appendingPathComponent("\(stamp)-\(Recipe.slugify(model))-settings-\(reason.lowercased()).dat"))
     }
 
+    /// Other slots holding the same recipe as `slot` (empty slots don't count). FS positions are compared without the
+    /// WB shift and B&W toning, which the settings file doesn't give reliably yet.
+    func duplicates(of slot: Slot) -> [String] {
+        guard !(slot.unused && !slot.changed) else { return [] }
+        func key(_ s: RecipeSettings, loose: Bool) -> RecipeSettings {
+            var k = s
+            if loose { k.wbRed = 0; k.wbBlue = 0; k.monoWarmCool = nil; k.monoMagentaGreen = nil }
+            k.normalize(); return k
+        }
+        return slots.filter { o in
+            guard o.id != slot.id, !(o.unused && !o.changed) else { return false }
+            let loose = o.dial || slot.dial
+            return key(o.draft, loose: loose) == key(slot.draft, loose: loose)
+        }.map(\.id)
+    }
+
+    static func sameAs(_ ids: [String]) -> String {
+        ids.isEmpty ? "" : "Same recipe as " + ids.joined(separator: " and ")
+    }
+
     func freeSlot() -> String? { slots.first { !$0.dial && $0.unused && !$0.changed }?.id ?? slots.first { !$0.dial }?.id }
 
     /// Each changed slot: back it up (read from the camera), write what differs, read back, record in history.
