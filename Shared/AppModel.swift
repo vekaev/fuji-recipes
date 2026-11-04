@@ -40,6 +40,7 @@ final class AppModel {
     var steps: [Doctor.Step] = []
     var appsHolding: [String] = []
     var info: DeviceInfo?
+    var connectedAt: Date?
     var slots: [Slot] = []
     var selectedSlot = "C1"
     var editing = false
@@ -121,7 +122,7 @@ final class AppModel {
         let ready = report.steps.count >= 5 && report.steps.allSatisfy(\.ok)
         if ready, !connected { await readCamera() }
         if !ready, info != nil {
-            info = nil; slots = []; editing = false
+            info = nil; slots = []; editing = false; connectedAt = nil
             if sheet == .slot { sheet = nil }
             say("Camera disconnected")
         }
@@ -142,6 +143,7 @@ final class AppModel {
             }
             library.observe(i, slots: all.map { ($0.id, $0.camName, $0.cam) })
             info = i
+            if connectedAt == nil { connectedAt = Date() }
             slots = all
             refreshHistory()
             backupCount = library.backups().count

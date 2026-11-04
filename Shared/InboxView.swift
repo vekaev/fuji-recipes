@@ -15,8 +15,8 @@ struct InboxView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
-                    InkHeadline(text: "inbox.", size: regular ? 40 : 34)
-                    Text("Reels you saved, read on your Mac. Keep the ones you want to try.")
+                    InkHeadline(text: "new looks.", size: regular ? 40 : 34)
+                    Text("Recipes you saved from reels and posts. Paste them here; Claude reads them on your Mac, then keep the ones you want to try.")
                         .font(regular ? .title3 : .body).foregroundStyle(.secondary)
                 }
                 addBox
@@ -24,7 +24,7 @@ struct InboxView: View {
                     HStack(spacing: 10) {
                         Text("\(model.queuedCount) waiting to be read").font(.system(size: 14, weight: .semibold))
                         Spacer()
-                        PillButton(title: "Copy “read my inbox” for Claude") {
+                        PillButton(title: "Copy the prompt for Claude") {
                             copyToPasteboard("Read my Fuji Recipes inbox: use fuji_inbox to list the queued reels, read each with the /recipe skill, save them with fuji_save_recipe (status to-try, credit the creator, add tags), and mark each with fuji_inbox_resolve.")
                             model.say("Copied: paste it into Claude")
                         }

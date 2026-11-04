@@ -14,7 +14,7 @@ struct LooksView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     VStack(alignment: .leading, spacing: 6) {
                         InkHeadline(text: "looks.", size: regular ? 40 : 34)
-                        Text(model.recipes.isEmpty ? "Your recipes appear here. Add some from the inbox, or ask Claude to find the ones in your photos."
+                        Text(model.recipes.isEmpty ? "Your recipes appear here. Add some in New looks, or ask Claude to find the ones in your photos."
                                                    : regular ? "How each recipe looks. Click a photo to see it big, drag a look onto a slot." : "How each recipe looks. Tap a photo to see it big.")
                             .font(regular ? .title3 : .body).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         #if os(iOS)

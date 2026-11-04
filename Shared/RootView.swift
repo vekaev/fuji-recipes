@@ -27,7 +27,7 @@ struct RootView: View {
                 TabView(selection: $model.tab) {
                     page(.looks).tabItem { Label("Looks", systemImage: "square.grid.2x2") }.tag(AppModel.Tab.looks)
                     page(.camera).tabItem { Label(model.connected ? (model.info?.model ?? "Camera") : "Camera", systemImage: "camera") }.tag(AppModel.Tab.camera)
-                    page(.inbox).tabItem { Label("Inbox", systemImage: "tray") }.tag(AppModel.Tab.inbox)
+                    page(.inbox).tabItem { Label("New looks", systemImage: "plus.square.on.square") }.tag(AppModel.Tab.inbox)
                         .badge(model.toReview.count)
                 }
                 .tint(Theme.ink)
@@ -115,22 +115,17 @@ private struct TopBar: View {
             tab(.looks) { Text("Looks") }
             tab(.inbox) {
                 HStack(spacing: 4) {
-                    Text("Inbox")
+                    Text("New looks")
                     if model.toReview.count + model.queuedCount > 0 { Text("\(model.toReview.count + model.queuedCount)").foregroundStyle(.secondary).monospacedDigit() }
                 }
             }
             Spacer(minLength: 8)
-            Button { if !model.connected { model.sheet = .connect } } label: {
-                HStack(spacing: 6) {
-                    Circle().frame(width: 6, height: 6).opacity(model.connected ? 0.9 : 0.25)
-                    Text(model.connected ? (model.info?.model ?? "Camera") + (Cameras.shared.simulate ? " (simulated)" : "")
-                         : model.busy != nil ? "Reading…" : "Connect camera")
-                }
-                .font(.system(size: 12, weight: .medium)).foregroundStyle(model.connected ? Theme.ink : .secondary)
-                .padding(.horizontal, 10).frame(height: 26)
+            if let s = status {
+                Text(s).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle).monospacedDigit()
+                    .padding(.trailing, 6)
             }
-            .buttonStyle(.plain).pointer().disabled(model.connected)
-            Text(status).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle).monospacedDigit()
+            CameraStatus()
+            Theme.line.frame(width: 1, height: 16).padding(.horizontal, 6)
             Menu {
                 Button("How to Use C1–C7 and FS1–FS3…") { model.sheet = .help }
                 Button("Connection Check…") { model.sheet = .trouble }
@@ -160,12 +155,12 @@ private struct TopBar: View {
         .overlay(alignment: .bottom) { Theme.line.frame(height: 1) }
     }
 
-    private var status: String {
+    /// Only while something is happening: a write, a read, or changes waiting for review.
+    private var status: String? {
         if let b = model.busy { return b }
         let n = model.changes.count
         if n > 0 && model.askBeforeWriting { return "\(n) change\(n > 1 ? "s" : "") for the camera" }
-        if model.connected { return "In sync with the camera" }
-        return "\(model.recipes.count) recipes"
+        return nil
     }
 
     private func tab<L: View>(_ t: AppModel.Tab, @ViewBuilder label: () -> L) -> some View {
@@ -237,5 +232,32 @@ struct PreviewOverlay: View {
     private func step(_ d: Int) {
         guard let p = model.preview else { return }
         model.preview?.index = max(0, min(p.paths.count - 1, p.index + d))
+    }
+}
+
+/// The camera in the top bar: a green dot and its name when it's connected, a grey "No camera" (click: how to
+/// connect) when not. Hover says since when.
+struct CameraStatus: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Button { if !model.connected { model.sheet = .connect } } label: {
+            HStack(spacing: 6) {
+                Circle().fill(model.connected ? Color.green : Color.secondary.opacity(0.35)).frame(width: 7, height: 7)
+                Text(model.connected ? (model.info?.model ?? "Camera") + (Cameras.shared.simulate ? " (simulated)" : "")
+                     : model.busy != nil ? "Reading…" : "No camera")
+            }
+            .font(.system(size: 12, weight: .medium)).foregroundStyle(model.connected ? Theme.ink : .secondary)
+            .padding(.horizontal, 8).frame(height: 26).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).pointer()
+        .help(help)
+        .accessibilityLabel(help)
+    }
+
+    private var help: String {
+        guard model.connected, let i = model.info else { return "Not connected · click for how to connect" }
+        let since = model.connectedAt.map { " since \($0.formatted(date: .omitted, time: .shortened))" } ?? ""
+        return "Connected\(since) · \(i.model), firmware \(i.firmware)"
     }
 }

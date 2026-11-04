@@ -6,6 +6,8 @@ struct FujiRecipesApp: App {
     @AppStorage(AppAppearance.key) private var appearance: AppAppearance = .system
     @State private var model = AppModel()
 
+    init() { _ = Updater.shared }   // Sparkle: a daily check against the latest GitHub release
+
     var body: some Scene {
         Window("Fuji Recipes", id: "main") {
             RootView()
@@ -18,9 +20,10 @@ struct FujiRecipesApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
+            CommandGroup(after: .appInfo) { CheckForUpdatesButton() }
             CommandGroup(after: .sidebar) {
                 Button("Looks") { model.tab = .looks }.keyboardShortcut("1")
-                Button("Inbox") { model.tab = .inbox }.keyboardShortcut("2")
+                Button("New Looks") { model.tab = .inbox }.keyboardShortcut("2")
             }
             CommandMenu("Camera") {
                 Button("Check Connection") { Task { await model.check() } }.keyboardShortcut("r")
@@ -44,7 +47,9 @@ struct FujiRecipesApp: App {
 
         Settings {
             Form {
-                Toggle("Ask before writing to the camera", isOn: $model.askBeforeWriting)
+                UpdatePreferences()
+                Section {
+                    Toggle("Ask before writing to the camera", isOn: $model.askBeforeWriting)
                 Text("Off: a look you put in a slot is written right away. Each write saves that slot first, reads it back, and the message offers Undo.")
                     .font(.caption).foregroundStyle(.secondary)
                 Picker("Appearance", selection: $appearance) {
@@ -54,6 +59,7 @@ struct FujiRecipesApp: App {
                 Text(model.library.root.path.contains("Mobile Documents") ? "In iCloud Drive: your iPhone and iPad see the same library."
                      : "To see it on your iPhone and iPad: turn on iCloud Drive (System Settings ▸ Apple Account ▸ iCloud), then move this folder to iCloud Drive and name it Fuji Recipes. The app, Claude and /recipe follow it.")
                     .font(.caption).foregroundStyle(.secondary)
+                }
             }
             .formStyle(.grouped)
             .frame(width: 480)
