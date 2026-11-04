@@ -17,3 +17,5 @@ commit	dev	held_out	kept	description
 -	30.5	-57.1	discarded	cast as warmth only (b* of mid and highlights)
 c0369b0	32.4	-49.5	kept	k=6 neighbours
 2c419ea	33.0	-49.6	kept	weights 1/(d+1)
+60d49eb	33.0	-30.5	baseline	new held-out: Fuji X Weekly + 162 photos from the owner's card (EXIF-labelled)
+-	32.8	-28.4	discarded	WB shift shrunk 15% toward neutral
