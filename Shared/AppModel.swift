@@ -194,10 +194,10 @@ final class AppModel {
 
     func recipe(_ slug: String?) -> Recipe? { recipes.first { $0.slug == slug } }
     /// The recipe a slot holds: exact, else one that differs only where the camera sets limits (lower DR, toning).
-    func match(_ s: RecipeSettings) -> Recipe? { matchOnCamera(s)?.recipe }
-    func matchOnCamera(_ s: RecipeSettings) -> (recipe: Recipe, notes: [String])? {
+    func match(_ s: RecipeSettings, dial: Bool = false) -> Recipe? { matchOnCamera(s, dial: dial)?.recipe }
+    func matchOnCamera(_ s: RecipeSettings, dial: Bool = false) -> (recipe: Recipe, notes: [String])? {
         if let r = recipes.first(where: { $0.settings == s }) { return (r, []) }
-        return recipes.compactMap { r in r.settings.cameraLimitedDifferences(s).map { (r, $0) } }.min { $0.1.count < $1.1.count }
+        return recipes.compactMap { r in r.settings.cameraLimitedDifferences(s, dial: dial).map { (r, $0) } }.min { $0.1.count < $1.1.count }
     }
 
     /// A camera refusal in plain words, with what to do about it.

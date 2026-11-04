@@ -100,6 +100,13 @@ func cli() -> Int32 {
             switch r { case .success(let s): print(s); return 0; case .failure(let e): return fail(e) }
         }
         return runTool("fuji_backup", ["reason": "fuji backup"])
+    case "render":
+        // fuji render <file.raf> [recipe …] [--full]: the Studio from the terminal; prints the JPEG paths.
+        guard let raw = rest.first(where: { !$0.hasPrefix("--") }) else { print("Usage: fuji render <file.raf> [recipe …] [--full]"); return 2 }
+        let names = rest.filter { !$0.hasPrefix("--") }.dropFirst()
+        var args: [String: Any] = ["raw": raw, "full": rest.contains("--full")]
+        if !names.isEmpty { args["recipes"] = Array(names) }
+        return runTool("fuji_render", args)
     case "settings-restore":
         // Experimental, for the supervised FS test (ADR 0004): sends a whole settings file back to the camera.
         guard let path = rest.first(where: { !$0.hasPrefix("--") }), rest.contains("--owner-is-watching") else {
@@ -197,7 +204,7 @@ func serve() {
     ProcessInfo.processInfo.endActivity(activity)   // stdin closed: the client is gone
 }
 
-let needsCamera = ["settings-restore", "mcp", "status", "slots", "backup", "call", "probe", "doctor"].contains(command)
+let needsCamera = ["render", "settings-restore", "mcp", "status", "slots", "backup", "call", "probe", "doctor"].contains(command)
 if needsCamera && !Cameras.shared.simulate { CameraBrowser.shared.start() }
 Thread.detachNewThread {
     if command == "mcp" { serve(); exit(0) }

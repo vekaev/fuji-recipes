@@ -51,6 +51,12 @@ final class Tools: @unchecked Sendable {
          "inputSchema": ["type": "object", "properties": ["status": ["type": "string", "enum": Values.status], "film": ["type": "string"], "query": ["type": "string", "description": "Text in the name, slug, creator or notes"]]], "annotations": ro],
         ["name": "fuji_recipe", "description": "One recipe in full: settings, the text to dial it in by hand, shooting advice (ISO, exposure — not stored in a slot), source and credit, sample photos.",
          "inputSchema": ["type": "object", "properties": ["recipe": recipeArg], "required": ["recipe"]], "annotations": ro],
+        ["name": "fuji_render", "description": "Studio: develop one of the owner's RAW files (.RAF, same camera model) with several recipes on the connected camera, as FUJIFILM X RAW Studio does, and return the JPEG paths (cached in the library's renders/ folder, so repeats are instant). Doesn't change any slot or setting. Recipes: slugs or names; default: favorites and to-try.",
+         "inputSchema": ["type": "object", "properties": ["raw": ["type": "string", "description": "Path to a .RAF"],
+                                                          "recipes": ["type": "array", "items": ["type": "string"]],
+                                                          "full": ["type": "boolean", "description": "Full resolution (slower); default a 640-px preview"]],
+                         "required": ["raw"]],
+         "annotations": ["readOnlyHint": false, "destructiveHint": false]],
         ["name": "fuji_compare", "description": "Field-by-field differences between two recipes or slots. Each side is a recipe slug/name or a slot like \"C3\" (read from the camera).",
          "inputSchema": ["type": "object", "properties": ["a": ["type": "string"], "b": ["type": "string"]], "required": ["a", "b"]], "annotations": ro],
         ["name": "fuji_kits", "description": "Kits: named sets of recipes for the slots (\"Iceland\": C1 Green Acros, C2 Strong Classic Neg, …), written in one go with fuji_plan_write.",
@@ -125,6 +131,7 @@ final class Tools: @unchecked Sendable {
         case "fuji_recipes": return try recipes(a)
         case "fuji_recipe": return try recipe(a)
         case "fuji_compare": return try await compare(a)
+        case "fuji_render": return try await render(a)
         case "fuji_kits": return plain(try library.kits())
         case "fuji_backups":
             return try library.backups().map { url -> JSON in
@@ -193,6 +200,30 @@ final class Tools: @unchecked Sendable {
         }
     }
 
+    func render(_ a: JSON) async throws -> Any {
+        let raw = URL(fileURLWithPath: (try str(a, "raw") as NSString).expandingTildeInPath)
+        guard FileManager.default.fileExists(atPath: raw.path) else { throw ToolError("No file at \(raw.path).") }
+        let full = a["full"] as? Bool ?? false
+        let all = try library.recipes()
+        let chosen: [Recipe] = try (a["recipes"] as? [String]).map { try $0.map { try library.recipe($0) } }
+            ?? all.filter { $0.status == "favorite" || $0.status == "to-try" }
+        let cache = RenderCache(library: library)
+        var out: [JSON] = []
+        var base: ConversionProfile?
+        var cam: FujiCamera?
+        for r in chosen {
+            if let hit = cache.cached(raw: raw, settings: r.settings, full: full) {
+                out.append(["recipe": r.slug, "name": r.name, "jpeg": hit.path, "cached": true]); continue
+            }
+            if cam == nil { cam = try await Cameras.shared.require() }
+            if base == nil { base = try await cam!.uploadRAF(try Data(contentsOf: raw)) }
+            let made = try await cam!.render(r.settings, base: base!, full: full)
+            let u = try cache.store(made.jpeg, raw: raw, settings: r.settings, full: full)
+            out.append(["recipe": r.slug, "name": r.name, "jpeg": u.path, "seconds": (made.seconds * 10).rounded() / 10, "notes": made.notes])
+        }
+        return ["raw": raw.path, "renders": out] as JSON
+    }
+
     func str(_ a: JSON, _ key: String) throws -> String {
         guard let v = a[key] as? String, !v.isEmpty else { throw ToolError("\(key) is required") }
         return v
@@ -231,7 +262,7 @@ final class Tools: @unchecked Sendable {
             out += dial.map { d -> JSON in
                 var o: JSON = ["slot": d.slot, "dial": true, "summary": d.settings.summary, "settings": plain(d.settings),
                                "unverified": d.unverified]
-                if let (r, notes) = library.matchOnCamera(d.settings) { o["recipe"] = r.slug; o["recipeName"] = r.name; if !notes.isEmpty { o["cameraLimits"] = notes } }
+                if let (r, notes) = library.matchOnCamera(d.settings, dial: true) { o["recipe"] = r.slug; o["recipeName"] = r.name; if !notes.isEmpty { o["cameraLimits"] = notes } }
                 return o
             }
         }

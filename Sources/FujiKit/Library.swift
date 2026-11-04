@@ -101,10 +101,10 @@ public struct Library: Sendable {
 
     /// The recipe a slot holds, allowing the differences the camera imposes (see `cameraLimitedDifferences`):
     /// an exact match first, else the closest recipe that differs only there, with what differs.
-    public func matchOnCamera(_ settings: RecipeSettings) -> (recipe: Recipe, notes: [String])? {
+    public func matchOnCamera(_ settings: RecipeSettings, dial: Bool = false) -> (recipe: Recipe, notes: [String])? {
         if let r = match(settings) { return (r, []) }
         let all = (try? recipes()) ?? []
-        return all.compactMap { r in r.settings.cameraLimitedDifferences(settings).map { (r, $0) } }
+        return all.compactMap { r in r.settings.cameraLimitedDifferences(settings, dial: dial).map { (r, $0) } }
             .min { $0.1.count < $1.1.count }
     }
 

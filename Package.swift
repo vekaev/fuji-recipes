@@ -22,5 +22,7 @@ let package = Package(
                                            "-Xlinker", "Sources/fuji/Info.plist"])]
         ),
         .testTarget(name: "FujiKitTests", dependencies: ["FujiKit"], swiftSettings: [.swiftLanguageMode(.v5)]),
+        // End to end: the built `fuji` binary, as Claude runs it, against the simulated X-E5 and a throwaway library.
+        .testTarget(name: "FujiCLITests", dependencies: ["fuji"], swiftSettings: [.swiftLanguageMode(.v5)]),
     ]
 )

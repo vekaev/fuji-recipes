@@ -1,3 +1,5 @@
+import ImageIO
+import CoreGraphics
 import XCTest
 @testable import FujiKit
 
@@ -205,5 +207,106 @@ final class InboxAndHistoryTests: XCTestCase {
         XCTAssertNil(h[0].to); XCTAssertNotNil(h[1].to)
         lib.observe(cam, slots: [("C3", "SUMMER", chrome)])   // unchanged: no new entry
         XCTAssertEqual(lib.history(cam, slot: "C3").count, 2)
+    }
+}
+
+/// End to end against the simulated X-E5: every camera feature through the same FujiCamera calls the app and MCP use.
+final class EndToEndCameraTests: XCTestCase {
+    func fakeRAF(model: String = "X-E5") -> Data { Data("FUJIFILMCCD-RAW 0201FF383501\(model)".utf8) + Data(count: 4000) }
+
+    func pixel(_ jpeg: Data) throws -> [Int] {
+        let src = try XCTUnwrap(CGImageSourceCreateWithData(jpeg as CFData, nil))
+        let img = try XCTUnwrap(CGImageSourceCreateImageAtIndex(src, 0, nil))
+        var px = [UInt8](repeating: 0, count: 4)
+        let ctx = try XCTUnwrap(CGContext(data: &px, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(),
+                                          bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        ctx.draw(img, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return px.prefix(3).map(Int.init)
+    }
+
+    /// Studio: upload once, render several recipes; each render is a JPEG that differs by recipe, nothing is left on
+    /// the camera, DR above the photo's is capped (with a note), and B&W renders are grey.
+    func testStudioRendersEachRecipeFromOneUpload() async throws {
+        let sim = SimulatedCamera()
+        let cam = FujiCamera(transport: sim)
+        let base = try await cam.uploadRAF(fakeRAF())
+        XCTAssertEqual(base.asShotDR, 200)
+        var neg = RecipeSettings(); neg.film = "Classic Neg."; neg.color = 4; neg.wbRed = 3; neg.dynamicRange = "DR400"; neg.normalize()
+        var chrome = RecipeSettings(); chrome.film = "Classic Chrome"; chrome.wbBlue = -5; chrome.normalize()
+        var acros = RecipeSettings(); acros.film = "Acros+G"; acros.normalize()
+        let a = try await cam.render(neg, base: base)
+        let b = try await cam.render(chrome, base: base)
+        let c = try await cam.render(acros, base: base)
+        XCTAssertEqual(sim.renders, 3)
+        XCTAssertTrue(a.notes.contains { $0.contains("DR400") }, "DR above the photo's must be capped and said")
+        XCTAssertTrue(b.notes.isEmpty)
+        let pa = try pixel(a.jpeg), pb = try pixel(b.jpeg), pc = try pixel(c.jpeg)
+        XCTAssertNotEqual(pa, pb)
+        XCTAssertLessThan(abs(pc[0] - pc[1]) + abs(pc[1] - pc[2]), 8, "Acros renders grey")
+        let again = try await cam.render(neg, base: base)
+        XCTAssertEqual(try pixel(again.jpeg), pa, "same recipe, same render")
+        let full = try await cam.render(neg, base: base, full: true)
+        XCTAssertGreaterThan(full.jpeg.count, 0)
+    }
+
+    func testStudioRefusesOtherModelsAndNonRAWFiles() async throws {
+        let cam = FujiCamera(transport: SimulatedCamera())
+        do { _ = try await cam.uploadRAF(Data("not a raw".utf8)); XCTFail("non-RAF accepted") } catch {}
+        do { _ = try await cam.uploadRAF(fakeRAF(model: "X-T5")); XCTFail("other model accepted") } catch {
+            XCTAssertTrue("\(error)".contains("same camera model"))
+        }
+        let card = SimulatedCamera(); card.usbMode = nil
+        do { _ = try await FujiCamera(transport: card).uploadRAF(fakeRAF()); XCTFail("card-reader mode accepted") } catch {}
+    }
+
+    /// FS1–FS3: the three-phase write (download, restore in a fresh session, read back) lands exactly, keeps the
+    /// checksum valid and the other positions as they were; the WB shift is left as on the camera.
+    func testWriteDialSlotEndToEnd() async throws {
+        let sim = SimulatedCamera()
+        let cam = FujiCamera(transport: sim)
+        let before = try XCTUnwrap(SettingsFile.dialSlots(sim.settingsFile, model: "X-E5"))
+        var r = RecipeSettings(); r.film = "Nostalgic Neg."; r.grainRoughness = "Weak"; r.grainSize = "Large"; r.dynamicRange = "DR400"
+        r.highlight = -0.5; r.shadow = 2.5; r.color = 4; r.sharpness = -1; r.highIsoNr = -4; r.clarity = -3; r.wbRed = 2; r.normalize()
+        let (report, prior) = try await cam.writeDialSlot(2, settings: r)
+        XCTAssertTrue(report.ok, "\(report.mismatches)")
+        XCTAssertEqual(report.unexpected, 0)
+        XCTAssertEqual(prior.count, SettingsFile.xe5.size)
+        let after = try XCTUnwrap(SettingsFile.dialSlots(sim.settingsFile, model: "X-E5"))
+        XCTAssertEqual(after[2].settings.film, "Nostalgic Neg.")
+        XCTAssertEqual(after[2].settings.shadow, 2.5)
+        XCTAssertEqual(after[0].settings, before[0].settings)
+        XCTAssertEqual(after[1].settings, before[1].settings)
+        XCTAssertTrue(report.kept.contains("wb_red"))
+        // Undo: writing the old FS3 back restores it.
+        _ = try await cam.writeDialSlot(2, settings: before[2].settings)
+        XCTAssertEqual(try XCTUnwrap(SettingsFile.dialSlots(sim.settingsFile, model: "X-E5"))[2].settings.film, before[2].settings.film)
+    }
+
+    /// The camera refuses a restore in the session that downloaded the file (why writeDialSlot resets the session).
+    func testRestoreInTheSameSessionIsRefused() async throws {
+        let sim = SimulatedCamera()
+        let cam = FujiCamera(transport: sim)
+        let file = try await cam.downloadSettingsBackup()
+        do { try await cam.restoreSettingsFile(file); XCTFail("restore in the same session accepted") } catch {}
+        await sim.resetSession()
+        try await cam.restoreSettingsFile(file)
+        var bad = file; bad[34760] = bad[34760] &+ 1   // checksum not moved
+        await sim.resetSession()
+        do { try await cam.restoreSettingsFile(bad); XCTFail("bad checksum accepted") } catch {}
+    }
+
+    /// DR200/DR400 need the slot's hidden ISO; a refused DR is reported, and the slot still matches its recipe.
+    func testDynamicRangeGateAndMatching() async throws {
+        let sim = SimulatedCamera()
+        let cam = FujiCamera(transport: sim)
+        var r = RecipeSettings(); r.film = "Classic Neg."; r.dynamicRange = "DR400"; r.color = 4; r.normalize()
+        let refused = try await cam.writeBank(3, settings: r, name: "SOFT EMBER")
+        XCTAssertTrue(refused.refused.contains { $0.field == "dynamicRange" })
+        XCTAssertEqual(refused.after.dynamicRange, "DR100")
+        XCTAssertEqual(r.cameraLimitedDifferences(refused.after)?.count, 1)
+        sim.bankISO[3] = 640
+        let ok = try await cam.writeBank(3, settings: r, name: "SOFT EMBER")
+        XCTAssertTrue(ok.ok, "\(ok.refused) \(ok.mismatches)")
+        XCTAssertEqual(ok.after.dynamicRange, "DR400")
     }
 }

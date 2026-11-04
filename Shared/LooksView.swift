@@ -240,7 +240,7 @@ struct SlotDropRow: View {
     @State private var targeted = false
 
     var body: some View {
-        let r = model.match(slot.draft)
+        let r = model.match(slot.draft, dial: slot.dial)
         let empty = slot.unused && !slot.changed
         HStack(spacing: 10) {
             Text(slot.id).font(.system(size: 11, weight: .semibold, design: .monospaced)).frame(width: 28, alignment: .leading)

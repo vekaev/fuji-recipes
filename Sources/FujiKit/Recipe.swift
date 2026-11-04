@@ -147,7 +147,7 @@ public struct RecipeSettings: Codable, Equatable, Hashable, Sendable {
     /// anything else differs. Those limits: a lower dynamic range (DR200 / DR400 need the slot's hidden ISO at 320 /
     /// 640 or more, so the X-E5 keeps DR100), and B&W toning (WC/MG), which some slots refuse and FS positions don't
     /// read reliably. An exact match returns [].
-    public func cameraLimitedDifferences(_ camera: RecipeSettings) -> [String]? {
+    public func cameraLimitedDifferences(_ camera: RecipeSettings, dial: Bool = false) -> [String]? {
         var a = self, b = camera
         a.normalize(); b.normalize()
         if a == b { return [] }
@@ -160,6 +160,11 @@ public struct RecipeSettings: Codable, Equatable, Hashable, Sendable {
         if a.isMonochrome, a.monoWarmCool != b.monoWarmCool || a.monoMagentaGreen != b.monoMagentaGreen {
             notes.append("toning WC \(b.monoWarmCool ?? 0) MG \(b.monoMagentaGreen ?? 0) on the camera (the recipe has WC \(a.monoWarmCool ?? 0) MG \(a.monoMagentaGreen ?? 0))")
             b.monoWarmCool = a.monoWarmCool; b.monoMagentaGreen = a.monoMagentaGreen
+        }
+        // FS1–FS3: the WB shift isn't written there yet (offsets unmapped), so the camera keeps its own.
+        if dial, a.wbRed != b.wbRed || a.wbBlue != b.wbBlue {
+            notes.append("WB shift R\(b.wbRed) B\(b.wbBlue) on the camera (the recipe has R\(a.wbRed) B\(a.wbBlue); FS positions keep their own for now)")
+            b.wbRed = a.wbRed; b.wbBlue = a.wbBlue
         }
         return a == b ? notes : nil
     }

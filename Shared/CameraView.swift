@@ -85,7 +85,7 @@ private struct SlotList: View {
     }
 
     private func content(_ s: AppModel.Slot) -> some View {
-        let r = model.match(s.draft)
+        let r = model.match(s.draft, dial: s.dial)
         let empty = s.unused && !s.changed
         return HStack(spacing: 10) {
             ZStack {
@@ -116,7 +116,7 @@ struct SlotDetail: View {
 
     var body: some View {
         if let s = model.slot {
-            let r = model.match(s.draft)
+            let r = model.match(s.draft, dial: s.dial)
             let photos = r.map { model.photos($0) } ?? []
             let hist = model.history[s.id] ?? []
             ScrollView {
@@ -194,7 +194,7 @@ struct SlotDetail: View {
         let dupes = model.duplicates(of: s)
         if !dupes.isEmpty { p.append("same recipe as " + dupes.joined(separator: " and ")) }
         if let from = hist.first?.from { p.append("since \(AppModel.short(from))") }
-        if let m = model.matchOnCamera(s.draft), !m.notes.isEmpty { p += m.notes }
+        if let m = model.matchOnCamera(s.draft, dial: s.dial), !m.notes.isEmpty { p += m.notes }
         if let r {
             if let last = r.lastShot { p.append("last used \(AppModel.short(last))") }
             if let n = r.shots, n > 0 { p.append("\(n) photos with it") }
