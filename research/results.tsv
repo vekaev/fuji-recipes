@@ -4,3 +4,7 @@ commit	dev	held_out	kept	description
 -	23.8	-51.8	discarded	k=3 neighbours
 -	25.7	-52.8	discarded	uniform neighbour weights
 -	25.7	-51.3	discarded	sharper weights 1/(d+0.1)^2
+904c583	28.3	-50.9	kept	drop hue features (scene-dependent)
+-	25.1	-50.8	discarded	drop median brightness feature
+-	26.4	-50.5	discarded	drop grain and local contrast features
+-	25.2	-52.8	discarded	drop saturatedL feature
