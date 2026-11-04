@@ -58,7 +58,7 @@ extension LookMatch {
         let rules = firstGuess(s)
         let nn = nearest(s, index: index, recipes: recipes, count: 6, exclude: exclude)
         guard nn.count >= 3, index.entries.count >= 15 else { return (rules.settings, rules.notes, nn) }
-        let w = nn.map { 1 / ($0.distance + 0.5) }, total = w.reduce(0, +)
+        let w = nn.map { 1 / ($0.distance + 1) }, total = w.reduce(0, +)
         func vote(_ f: (RecipeSettings) -> String) -> String {
             var t: [String: Double] = [:]
             for (n, wi) in zip(nn, w) { t[f(n.recipe.settings), default: 0] += wi }
