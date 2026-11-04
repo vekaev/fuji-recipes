@@ -54,14 +54,15 @@ struct LookCard: View {
     @Environment(AppModel.self) private var model
     @Environment(\.regularLayout) private var regular
     let recipe: Recipe
+    @State private var hovering = false
 
     var body: some View {
         let photos = model.photos(recipe)
         let three = (0..<3).map { $0 < photos.count ? photos[$0] : nil }
         Group {
             if regular {
-                HStack(alignment: .center, spacing: 12) {
-                    info.frame(width: 220, alignment: .leading)
+                HStack(alignment: .top, spacing: 12) {
+                    info.frame(width: 220, alignment: .leading).frame(maxHeight: .infinity, alignment: .top)
                     ForEach(0..<3, id: \.self) { i in tile(three[i], i, photos, ratio: 3 / 2) }
                 }
             } else {
@@ -84,6 +85,7 @@ struct LookCard: View {
         .overlay(RoundedRectangle(cornerRadius: regular ? 16 : 20, style: .continuous).stroke(Theme.line, lineWidth: regular ? 1 : 0))
         // The whole card opens the recipe page; photos (preview), the heart and ⋯ keep their own taps.
         .contentShape(RoundedRectangle(cornerRadius: regular ? 16 : 20, style: .continuous))
+        .onHover { hovering = $0 }
         .onTapGesture { edit() }
         .pointer()
         .draggable(recipe.slug) {
@@ -97,18 +99,23 @@ struct LookCard: View {
     }
 
     private var info: some View {
+        // Fills the card's height: name and description at the top, tags and whereabouts level with the photos' bottom.
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .top, spacing: 6) {
                 Text(recipe.name).font(.system(size: 19, weight: .bold)).tracking(-0.3).lineLimit(2)
                     .help("Edit name, description and tags")
                 Spacer(minLength: 4)
-                favorite
-                more
+                // Mac: shown on hover (a favorite keeps its filled heart); touch: always.
+                let show = hovering || !regular
+                favorite.opacity(show || recipe.status == "favorite" ? 1 : 0)
+                more.opacity(show ? 1 : 0)
             }
             description
+            Spacer(minLength: 8)
             tags
             Text(model.whereabouts(recipe)).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
+        .padding(.vertical, 2)
     }
 
     @ViewBuilder private var description: some View {
@@ -122,7 +129,8 @@ struct LookCard: View {
 
     private var favorite: some View {
         Button { model.toggleFavorite(recipe) } label: {
-            Image(systemName: recipe.status == "favorite" ? "heart.fill" : "heart").font(.system(size: 12))
+            Image(systemName: recipe.status == "favorite" ? "heart.fill" : "heart").font(.system(size: regular ? 16 : 18, weight: .medium))
+                .frame(width: 26, height: 26).contentShape(Rectangle())
         }
         .buttonStyle(.plain).pointer().foregroundStyle(recipe.status == "favorite" ? Theme.ink : Color.secondary)
         .accessibilityLabel(recipe.status == "favorite" ? "Remove from favorites" : "Favorite")
@@ -139,8 +147,8 @@ struct LookCard: View {
     /// One small, light ⋯ beside the heart: everything else a card can do (the card itself opens the recipe page).
     private var more: some View {
         Menu { menuItems } label: {
-            Image(systemName: "ellipsis").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
-                .frame(width: 22, height: 22)
+            Image(systemName: "ellipsis").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                .frame(width: 26, height: 26)
                 .background(Theme.raised.opacity(0.7), in: Circle())
                 .contentShape(Circle())
         }
