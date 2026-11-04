@@ -240,6 +240,33 @@ public actor FujiCamera {
     /// The camera's full settings backup (what X Acquire / FUJIFILM TETHER APP save as .dat): PTP object handle 0,
     /// read with GetObjectInfo + GetObject. Read-only. Starts with "FUJIFILM" (libfuji fuji_usb.c, grawji camera_backup.py).
     /// Holds every setting incl. the film simulation dial's FS1–FS3 recipes; its layout is undocumented for X-Processor 5.
+    /// Sends a whole settings file back (PTP object 0, like X Acquire's restore). WRITES EVERY CAMERA SETTING.
+    /// Rules from libfuji / grawji (hardware-verified there): ObjectInfo of format 0x5000, 1076 bytes as X Acquire sends;
+    /// never in a session that already downloaded the file (the camera answers 0x200F), so callers use a fresh process.
+    /// Refuses a file for another model or of another size; the camera itself rejects a bad checksum with 0x200F.
+    public func restoreSettingsFile(_ data: Data) async throws {
+        let info = try await deviceInfo()
+        _ = try? await usbMode()   // the preamble the camera expects before object access
+        guard data.prefix(8) == Data("FUJIFILM".utf8), data.count > 0x40 else { throw CameraError("Not a Fujifilm settings file.") }
+        let fileModel = String(decoding: data[0x14..<0x34].prefix { $0 != 0 }, as: UTF8.self).trimmingCharacters(in: .whitespaces)
+        let want = info.model.replacingOccurrences(of: "-", with: "").uppercased()
+        guard fileModel.replacingOccurrences(of: "-", with: "").uppercased().contains(want) || want.contains(fileModel.replacingOccurrences(of: "-", with: "").uppercased()) else {
+            throw CameraError("This file is from a \(fileModel); the camera is a \(info.model). Not restoring.")
+        }
+        if let l = SettingsFile.layout(model: info.model), data.count != l.size {
+            throw CameraError("The file is \(data.count) bytes; a \(info.model) settings file is \(l.size). Not restoring.")
+        }
+        var objectInfo = Data(count: 1076)
+        objectInfo[4] = 0x00; objectInfo[5] = 0x50                       // ObjectFormat 0x5000, little-endian
+        let n = UInt32(data.count)
+        objectInfo[8] = UInt8(n & 0xFF); objectInfo[9] = UInt8((n >> 8) & 0xFF)
+        objectInfo[10] = UInt8((n >> 16) & 0xFF); objectInfo[11] = UInt8((n >> 24) & 0xFF)
+        let r1 = try await transport.send(0x100C, [0, 0], data: objectInfo)
+        guard r1.ok else { throw CameraError("SendObjectInfo: \(PTPCode.describe(r1.code))") }
+        let r2 = try await transport.send(0x100D, [], data: data)
+        guard r2.ok else { throw CameraError("SendObject: \(PTPCode.describe(r2.code))") }
+    }
+
     public func downloadSettingsBackup() async throws -> Data {
         let infoR = try await transport.send(0x1008, [0], data: nil)
         guard infoR.ok else { throw CameraError("GetObjectInfo(0): \(PTPCode.describe(infoR.code))") }

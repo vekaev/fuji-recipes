@@ -100,6 +100,18 @@ func cli() -> Int32 {
             switch r { case .success(let s): print(s); return 0; case .failure(let e): return fail(e) }
         }
         return runTool("fuji_backup", ["reason": "fuji backup"])
+    case "settings-restore":
+        // Experimental, for the supervised FS test (ADR 0004): sends a whole settings file back to the camera.
+        guard let path = rest.first(where: { !$0.hasPrefix("--") }), rest.contains("--owner-is-watching") else {
+            print("Usage: fuji settings-restore <file.dat> --owner-is-watching   (writes EVERY camera setting)"); return 2
+        }
+        let r = blocking { () async throws -> String in
+            let data = try Data(contentsOf: URL(fileURLWithPath: path))
+            let cam = try await Cameras.shared.require()
+            try await cam.restoreSettingsFile(data)
+            return "Restored \(data.count) bytes from \(path)"
+        }
+        switch r { case .success(let s): print(s); return 0; case .failure(let e): return fail(e) }
     case "guide": print(Guide.text); return 0
     case "index":
         do { try tools.library.writeIndex(); print(tools.library.indexFile.path); return 0 } catch { return fail(error) }
@@ -185,7 +197,7 @@ func serve() {
     ProcessInfo.processInfo.endActivity(activity)   // stdin closed: the client is gone
 }
 
-let needsCamera = ["mcp", "status", "slots", "backup", "call", "probe", "doctor"].contains(command)
+let needsCamera = ["settings-restore", "mcp", "status", "slots", "backup", "call", "probe", "doctor"].contains(command)
 if needsCamera && !Cameras.shared.simulate { CameraBrowser.shared.start() }
 Thread.detachNewThread {
     if command == "mcp" { serve(); exit(0) }
