@@ -221,7 +221,7 @@ final class Tools: @unchecked Sendable {
         if let i = try? await cam.deviceInfo() { library.observe(i, slots: banks.map { ($0.slot, $0.name, $0.settings) }) }
         var out = banks.map { b -> JSON in
             var o: JSON = ["slot": b.slot, "name": b.name, "summary": b.settings.summary, "settings": plain(b.settings)]
-            if let r = library.match(b.settings) { o["recipe"] = r.slug; o["recipeName"] = r.name }
+            if let (r, notes) = library.matchOnCamera(b.settings) { o["recipe"] = r.slug; o["recipeName"] = r.name; if !notes.isEmpty { o["cameraLimits"] = notes } }
             return o
         }
         // Film simulation dial (X-E5): FS1–FS3 live only in the camera's settings file; written through it (ADR 0004).
@@ -231,7 +231,7 @@ final class Tools: @unchecked Sendable {
             out += dial.map { d -> JSON in
                 var o: JSON = ["slot": d.slot, "dial": true, "summary": d.settings.summary, "settings": plain(d.settings),
                                "unverified": d.unverified]
-                if let r = library.match(d.settings) { o["recipe"] = r.slug; o["recipeName"] = r.name }
+                if let (r, notes) = library.matchOnCamera(d.settings) { o["recipe"] = r.slug; o["recipeName"] = r.name; if !notes.isEmpty { o["cameraLimits"] = notes } }
                 return o
             }
         }

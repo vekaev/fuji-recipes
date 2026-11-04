@@ -194,6 +194,7 @@ struct SlotDetail: View {
         let dupes = model.duplicates(of: s)
         if !dupes.isEmpty { p.append("same recipe as " + dupes.joined(separator: " and ")) }
         if let from = hist.first?.from { p.append("since \(AppModel.short(from))") }
+        if let m = model.matchOnCamera(s.draft), !m.notes.isEmpty { p += m.notes }
         if let r {
             if let last = r.lastShot { p.append("last used \(AppModel.short(last))") }
             if let n = r.shots, n > 0 { p.append("\(n) photos with it") }

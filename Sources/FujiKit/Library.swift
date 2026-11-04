@@ -99,6 +99,15 @@ public struct Library: Sendable {
         return (try? recipes())?.first { var t = $0.settings; t.normalize(); return t == s }
     }
 
+    /// The recipe a slot holds, allowing the differences the camera imposes (see `cameraLimitedDifferences`):
+    /// an exact match first, else the closest recipe that differs only there, with what differs.
+    public func matchOnCamera(_ settings: RecipeSettings) -> (recipe: Recipe, notes: [String])? {
+        if let r = match(settings) { return (r, []) }
+        let all = (try? recipes()) ?? []
+        return all.compactMap { r in r.settings.cameraLimitedDifferences(settings).map { (r, $0) } }
+            .min { $0.1.count < $1.1.count }
+    }
+
     /// Saves a recipe after checking it. Same settings as another recipe → refused unless `allowDuplicate`, naming it.
     @discardableResult
     public func save(_ input: Recipe, allowDuplicate: Bool = false) throws -> Recipe {

@@ -143,6 +143,27 @@ public struct RecipeSettings: Codable, Equatable, Hashable, Sendable {
         return out
     }
 
+    /// How `camera` (read from a slot) differs from this recipe only where the camera itself sets limits, or nil when
+    /// anything else differs. Those limits: a lower dynamic range (DR200 / DR400 need the slot's hidden ISO at 320 /
+    /// 640 or more, so the X-E5 keeps DR100), and B&W toning (WC/MG), which some slots refuse and FS positions don't
+    /// read reliably. An exact match returns [].
+    public func cameraLimitedDifferences(_ camera: RecipeSettings) -> [String]? {
+        var a = self, b = camera
+        a.normalize(); b.normalize()
+        if a == b { return [] }
+        var notes: [String] = []
+        let rank = ["DR100": 1, "DR200": 2, "DR400": 3]
+        if a.dynamicRange != b.dynamicRange, let wa = rank[a.dynamicRange], let wb = rank[b.dynamicRange], wb < wa {
+            notes.append("\(b.dynamicRange) on the camera (the recipe has \(a.dynamicRange): the slot's ISO is too low)")
+            b.dynamicRange = a.dynamicRange
+        }
+        if a.isMonochrome, a.monoWarmCool != b.monoWarmCool || a.monoMagentaGreen != b.monoMagentaGreen {
+            notes.append("toning WC \(b.monoWarmCool ?? 0) MG \(b.monoMagentaGreen ?? 0) on the camera (the recipe has WC \(a.monoWarmCool ?? 0) MG \(a.monoMagentaGreen ?? 0))")
+            b.monoWarmCool = a.monoWarmCool; b.monoMagentaGreen = a.monoMagentaGreen
+        }
+        return a == b ? notes : nil
+    }
+
     public static let labels = ["film": "Film simulation", "grainRoughness": "Grain", "grainSize": "Grain size",
         "colorChrome": "Color chrome", "colorChromeFxBlue": "FX Blue", "wb": "White balance", "wbKelvin": "Kelvin",
         "wbRed": "WB shift red", "wbBlue": "WB shift blue", "dynamicRange": "Dynamic range", "dRangePriority": "D-Range Priority",

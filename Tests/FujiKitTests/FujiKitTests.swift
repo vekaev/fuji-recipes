@@ -98,6 +98,23 @@ final class CameraTests: XCTestCase {
     }
 }
 
+final class CameraLimitsTests: XCTestCase {
+    /// A slot that kept DR100 (hidden ISO too low) or dropped the toning is still that recipe, with a note.
+    func testSlotStillMatchesItsRecipe() {
+        var r = RecipeSettings(); r.film = "Classic Neg."; r.dynamicRange = "DR400"; r.color = 4; r.normalize()
+        var cam = r; cam.dynamicRange = "DR100"
+        XCTAssertEqual(r.cameraLimitedDifferences(r), [])
+        XCTAssertEqual(r.cameraLimitedDifferences(cam)?.count, 1)
+        var other = cam; other.color = 2
+        XCTAssertNil(r.cameraLimitedDifferences(other))                       // anything else: not this recipe
+        var higher = r; higher.dynamicRange = "DR100"; var camHigher = higher; camHigher.dynamicRange = "DR400"
+        XCTAssertNil(higher.cameraLimitedDifferences(camHigher))             // the camera never raises DR by itself
+        var mono = RecipeSettings(); mono.film = "Acros+G"; mono.dynamicRange = "DR400"; mono.monoWarmCool = -1; mono.monoMagentaGreen = -1; mono.normalize()
+        var monoCam = mono; monoCam.dynamicRange = "DR100"; monoCam.monoWarmCool = 0; monoCam.monoMagentaGreen = 0
+        XCTAssertEqual(mono.cameraLimitedDifferences(monoCam)?.count, 2)
+    }
+}
+
 final class SettingsFileTests: XCTestCase {
     /// FS1 bytes as read from the owner's X-E5 (fw 1.12), checked against the EXIF of 39 photos shot with it.
     func testXE5DialSlotDecodes() throws {

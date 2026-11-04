@@ -193,7 +193,25 @@ final class AppModel {
     }
 
     func recipe(_ slug: String?) -> Recipe? { recipes.first { $0.slug == slug } }
-    func match(_ s: RecipeSettings) -> Recipe? { recipes.first { $0.settings == s } }
+    /// The recipe a slot holds: exact, else one that differs only where the camera sets limits (lower DR, toning).
+    func match(_ s: RecipeSettings) -> Recipe? { matchOnCamera(s)?.recipe }
+    func matchOnCamera(_ s: RecipeSettings) -> (recipe: Recipe, notes: [String])? {
+        if let r = recipes.first(where: { $0.settings == s }) { return (r, []) }
+        return recipes.compactMap { r in r.settings.cameraLimitedDifferences(s).map { (r, $0) } }.min { $0.1.count < $1.1.count }
+    }
+
+    /// A camera refusal in plain words, with what to do about it.
+    static func explain(_ f: FieldResult, slot: String) -> String {
+        switch f.field {
+        case "dynamicRange":
+            let dr = f.wanted == 400 ? "DR400 needs ISO 640" : f.wanted == 200 ? "DR200 needs ISO 320" : "that DR needs a higher ISO"
+            return "\(slot) keeps a lower DR: \(dr) or more, and this slot remembers a lower ISO. On the camera: dial on C, pick \(slot), set ISO to 640+, then put the recipe in again"
+        case "monoWarmCool", "monoMagentaGreen":
+            return "\(slot) refused the B&W toning; set WC/MG on the camera if you need it"
+        default:
+            return "\(slot) refused \(f.field)"
+        }
+    }
     func slotsHolding(_ r: Recipe) -> [String] { slots.filter { $0.cam == r.settings }.map(\.id) }
 
     /// "In C1 and FS1 · 39 of your photos · last used 11 Jul"
@@ -361,14 +379,19 @@ final class AppModel {
                     if slots[k].draft == s.draft { slots[k].draft = report.after }
                     if slots[k].name == s.name { slots[k].name = report.name }
                 }
-                if !report.ok { problems += report.refused.map { "\(s.id) \($0.field): \($0.response)" } + report.mismatches.map { "\(s.id) \($0)" } }
+                if !report.ok {
+                    let refusedFields = Set(report.refused.map(\.field))
+                    problems += report.refused.map { AppModel.explain($0, slot: s.id) }
+                    // Mismatches already explained by a refusal aren't repeated.
+                    problems += report.mismatches.filter { m in !(refusedFields.contains("dynamicRange") && m.hasPrefix("Dynamic range")) && !(refusedFields.contains { $0.hasPrefix("mono") } && m.hasPrefix("Mono")) }.map { "\(s.id) \($0)" }
+                }
             }
             refreshHistory()
             backupCount = library.backups().count
             let what = todo.map { "\(match($0.draft)?.name ?? ($0.name.isEmpty ? $0.draft.film : $0.name.capitalized)) in \($0.id)" }.joined(separator: ", ")
             let note = keptOnCamera.isEmpty ? "" : " · \(keptOnCamera.joined(separator: ", ")) stays as set on the camera"
             if !problems.isEmpty {
-                say("Written with differences: \(problems.joined(separator: "; "))")
+                say("Written · \(problems.joined(separator: " · "))")
             } else if askBeforeWriting {
                 say("Wrote \(todo.map(\.id).joined(separator: ", ")) · read back OK · to shoot: dial on C, Q, pick the slot")
             } else {
@@ -426,7 +449,7 @@ final class AppModel {
         toast = text
         toastAction = action
         toastTask?.cancel()
-        let seconds: UInt64 = action == nil ? 3_500_000_000 : 8_000_000_000
+        let seconds = UInt64(max(action == nil ? 3.5 : 8, Double(text.count) / 14) * 1_000_000_000)   // long messages stay longer
         toastTask = Task { try? await Task.sleep(nanoseconds: seconds); if !Task.isCancelled { toast = nil; toastAction = nil } }
     }
 }
