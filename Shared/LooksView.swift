@@ -70,23 +70,19 @@ struct LookCard: View {
                         Text(recipe.name).font(.system(size: 19, weight: .bold)).tracking(-0.3)
                         Spacer()
                         favorite
+                        more
                     }
                     description
                     HStack(spacing: 5) { ForEach(0..<3, id: \.self) { i in tile(three[i], i, photos, ratio: 1) } }
                     tags
-                    HStack {
-                        Text(model.whereabouts(recipe)).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-                        Spacer()
-                        Button("Edit ›") { edit() }.font(.system(size: 13)).buttonStyle(.plain).pointer()
-                        putMenu
-                    }
+                    Text(model.whereabouts(recipe)).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
         }
         .padding(12)
         .background(Theme.card, in: RoundedRectangle(cornerRadius: regular ? 16 : 20, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: regular ? 16 : 20, style: .continuous).stroke(Theme.line, lineWidth: regular ? 1 : 0))
-        // The whole card opens the recipe page; photos (preview), the heart, Edit and Put in… keep their own taps.
+        // The whole card opens the recipe page; photos (preview), the heart and ⋯ keep their own taps.
         .contentShape(RoundedRectangle(cornerRadius: regular ? 16 : 20, style: .continuous))
         .onTapGesture { edit() }
         .pointer()
@@ -97,14 +93,7 @@ struct LookCard: View {
             }
             .padding(8).background(Theme.card, in: RoundedRectangle(cornerRadius: 10))
         }
-        .contextMenu {
-            Button("Edit Name, Description and Tags…") { edit() }
-            Button(recipe.status == "favorite" ? "Remove from Favorites" : "Favorite") { model.toggleFavorite(recipe) }
-            Button("Copy as Text") { copyToPasteboard("\(recipe.name)\n\(recipe.settings.text)"); model.say("Copied as text") }
-            if model.connected {
-                Menu("Put in") { ForEach(model.slots.filter { !$0.dial }) { s in Button(s.id + (s.unused ? " (empty)" : " · " + (s.camName.isEmpty ? s.cam.film : s.camName))) { model.put(recipe, in: s.id) } } }
-            }
-        }
+        .contextMenu { menuItems }
     }
 
     private var info: some View {
@@ -114,15 +103,11 @@ struct LookCard: View {
                     .help("Edit name, description and tags")
                 Spacer(minLength: 4)
                 favorite
+                more
             }
             description
             tags
             Text(model.whereabouts(recipe)).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 12) {
-                Button("Edit ›") { edit() }.buttonStyle(.plain).pointer()
-                if model.connected { putMenu }
-            }
-            .font(.system(size: 12))
         }
     }
 
@@ -145,13 +130,26 @@ struct LookCard: View {
 
     private var tags: some View {
         FlowLayout(spacing: 4) {
+            if recipe.status == "to-try" { Chip(title: "To try", small: true).opacity(0.6) }
             ForEach(recipe.tags ?? [], id: \.self) { Chip(title: $0, small: true) }
             if recipe.settings.isMonochrome && !(recipe.tags ?? []).contains("B&W") { Chip(title: "B&W", small: true) }
         }
     }
 
-    private var putMenu: some View {
-        Menu {
+    /// One small, light ⋯ beside the heart: everything else a card can do (the card itself opens the recipe page).
+    private var more: some View {
+        Menu { menuItems } label: {
+            Image(systemName: "ellipsis").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                .frame(width: 22, height: 22)
+                .background(Theme.raised.opacity(0.7), in: Circle())
+                .contentShape(Circle())
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().pointer()
+        .accessibilityLabel("More for \(recipe.name)")
+    }
+
+    @ViewBuilder private var menuItems: some View {
+        Menu("Put in") {
             if model.connected {
                 ForEach(model.slots.filter { !$0.dial }) { s in
                     Button(s.id + (s.unused && !s.changed ? " (empty)" : " · " + (s.name.isEmpty ? s.draft.film : s.name))) { model.put(recipe, in: s.id) }
@@ -159,8 +157,17 @@ struct LookCard: View {
             } else {
                 Text("Plug in your camera first")
             }
-        } label: { Text("Put in…").font(.system(size: 13, weight: .semibold)) }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().pointer()
+        }
+        if recipe.status == "to-try" {
+            Button("Tried It") { model.setStatus(recipe, "tried") }
+        } else if recipe.status == "tried" || recipe.status == "rejected" {
+            Button("Back to To Try") { model.setStatus(recipe, "to-try") }
+        }
+        Button(recipe.status == "favorite" ? "Remove from Favorites" : "Favorite") { model.toggleFavorite(recipe) }
+        if recipe.status != "rejected" { Button("Not for Me") { model.setStatus(recipe, "rejected") } }
+        Divider()
+        Button("Edit…") { edit() }
+        Button("Copy as Text") { copyToPasteboard("\(recipe.name)\n\(recipe.settings.text)"); model.say("Copied as text") }
     }
 
     private func tile(_ path: String?, _ i: Int, _ all: [String], ratio: CGFloat) -> some View {

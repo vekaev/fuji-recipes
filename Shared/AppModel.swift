@@ -216,6 +216,12 @@ final class AppModel {
         return out.string(from: d)
     }
 
+    func setStatus(_ r: Recipe, _ status: String) {
+        _ = try? library.setStatus(r.slug, status: status, note: nil)
+        reload()
+        say(status == "tried" ? "\(r.name) · tried" : status == "rejected" ? "\(r.name) · not for me" : "\(r.name) · to try")
+    }
+
     func toggleFavorite(_ r: Recipe) {
         let next = r.status == "favorite" ? ((r.shots ?? 0) > 0 ? "mine" : "tried") : "favorite"
         _ = try? library.setStatus(r.slug, status: next, note: nil)
