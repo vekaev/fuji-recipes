@@ -96,7 +96,7 @@ Shared with `/recipe` and `fuji mcp`: field names in skills/fuji-recipes/referen
 | Add recipes (was Inbox, then New looks): paste/drop links, Instagram export, Keep/Skip | ✓ (drop, paste) | ✓ (paste; share extension: later) | `fuji_inbox`, `fuji_inbox_add`, `fuji_inbox_resolve` |
 | Reading reels | via Claude / `/recipe` on the Mac | queued, read on the Mac | `fuji_inbox` → `/recipe` |
 | Connect guide + live check | ✓ (USB, ioreg) | ✓ (no USB step: iOS can't see the bus) | `fuji_doctor` |
-| FS1–FS3 | read | read | read (`fuji_slots`); writes after ADR 0004's test |
+| FS1–FS3 (film simulation dial) | ✓ drop / Put in / Undo (WB shift, toning kept) | ✓ same | `fuji_plan_write` slot "FS1"…"FS3" → approve → `fuji_apply_write` |
 | Reference scenes rendered by the camera | not yet (ADR 0003 spike) | not yet | not yet |
 | Recipes from your photos' EXIF | ✓ (exiftool) | n/a (no exiftool on iOS; the Mac fills the library) | `fuji_import_photos` |
 
