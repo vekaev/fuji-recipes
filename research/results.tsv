@@ -1,1 +1,2 @@
 commit	dev	held_out	kept	description
+59d207c	27.5	-52.9	baseline	k=5 nearest photos, weights 1/(d+0.5), all features
