@@ -16,7 +16,7 @@ struct SlotEditor: View {
                     TextField("Slot name", text: Binding(get: { s.name }, set: { v in model.update { $0.name = PTPString.bankName(v) } }))
                         .textFieldStyle(.plain).font(.system(size: 12.5, weight: .semibold))
                     Button { model.editing = false } label: { Image(systemName: "xmark").font(.system(size: 11)) }
-                        .buttonStyle(.plain).foregroundStyle(.secondary).help("Close (Esc)")
+                        .buttonStyle(.plain).pointer().foregroundStyle(.secondary).help("Close (Esc)")
                 }
                 .padding(.horizontal, 14).frame(height: 38)
                 .overlay(alignment: .bottom) { Theme.line.frame(height: 1) }
@@ -147,7 +147,7 @@ struct Segments: View {
                         .background(value == o ? Theme.raised : .clear, in: RoundedRectangle(cornerRadius: 3))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plain).pointer()
             }
         }
     }

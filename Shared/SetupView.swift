@@ -33,7 +33,7 @@ struct SetupView: View {
                         .font(.system(size: 12)).foregroundStyle(.secondary).padding(.top, 14)
                         .fixedSize(horizontal: false, vertical: true)
                     Button("How to shoot with C1–C7 and FS1–FS3") { model.sheet = .help }
-                        .buttonStyle(.plain).underline().font(.system(size: 12)).padding(.top, 6)
+                        .buttonStyle(.plain).pointer().underline().font(.system(size: 12)).padding(.top, 6)
                 }
                 .frame(maxWidth: 440, alignment: .leading)
 
@@ -51,7 +51,7 @@ struct SetupView: View {
                     }
                     .padding(.top, 14)
                     Button("No camera at hand? Try with a simulated X-E5") { model.trySimulated() }
-                        .buttonStyle(.plain).underline().font(.system(size: 12)).padding(.top, 10)
+                        .buttonStyle(.plain).pointer().underline().font(.system(size: 12)).padding(.top, 10)
                 }
                 .frame(width: regular ? 330 : nil, alignment: .leading)
             }

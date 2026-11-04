@@ -38,7 +38,7 @@ struct RootView: View {
                     Text(t).font(.system(size: 12.5)).foregroundStyle(.white).multilineTextAlignment(.center)
                     if let a = model.toastAction {
                         Button(a.title) { model.toast = nil; model.toastAction = nil; a.run() }
-                            .buttonStyle(.plain).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
+                            .buttonStyle(.plain).pointer().font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
                     }
                 }
                     .padding(.horizontal, 14).padding(.vertical, 8)
@@ -49,14 +49,42 @@ struct RootView: View {
         .overlay { if model.preview != nil { PreviewOverlay().transition(.opacity) } }
         .animation(.easeOut(duration: 0.18), value: model.toast)
         .animation(.easeOut(duration: 0.15), value: model.preview)
-        .sheet(item: $model.sheet) { sheet in
-            switch sheet {
-            case .help: SlotsHelpSheet()
-            case .trouble: TroubleSheet()
-            case .backups: BackupsSheet()
-            case .review: ReviewSheet()
-            case .settings: RecipeSettingsSheet()
+        #if os(macOS)
+        // Mac: our own modal, so a click outside or Esc closes it (a system sheet ignores both).
+        .overlay {
+            if let sheet = model.sheet {
+                ZStack {
+                    Color.black.opacity(0.28).ignoresSafeArea()
+                        .contentShape(Rectangle())
+                        .onTapGesture { model.closeSheet() }
+                    sheetView(sheet)
+                        .background(Theme.paper)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.line))
+                        .shadow(color: .black.opacity(0.22), radius: 30, y: 12)
+                        .padding(.vertical, 40)
+                    Button("") { model.closeSheet() }.keyboardShortcut(.cancelAction).opacity(0).frame(width: 0, height: 0)
+                }
+                .transition(.opacity)
             }
+        }
+        .animation(.easeOut(duration: 0.15), value: model.sheet)
+        #else
+        .sheet(item: $model.sheet, onDismiss: {
+            let hook = model.sheetWillClose
+            model.sheetWillClose = nil
+            hook?()
+        }) { sheetView($0) }
+        #endif
+    }
+
+    @ViewBuilder private func sheetView(_ sheet: AppModel.Sheet) -> some View {
+        switch sheet {
+        case .help: SlotsHelpSheet()
+        case .trouble: TroubleSheet()
+        case .backups: BackupsSheet()
+        case .review: ReviewSheet()
+        case .settings: RecipeSettingsSheet()
         }
     }
 
@@ -106,7 +134,7 @@ private struct TopBar: View {
             } label: {
                 Image(systemName: "ellipsis").font(.system(size: 13)).frame(width: 28, height: 26)
             }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().foregroundStyle(.secondary)
+            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().foregroundStyle(.secondary).pointer()
         }
         #if os(macOS)
         .padding(.leading, 78)   // clear of the window buttons
@@ -140,7 +168,7 @@ private struct TopBar: View {
                 .background(on ? Theme.raised : .clear, in: RoundedRectangle(cornerRadius: 4))
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plain).pointer()
     }
 }
 
@@ -161,7 +189,7 @@ struct PreviewOverlay: View {
                         Text("\(p.index + 1) / \(p.paths.count)").font(.system(size: 13)).foregroundStyle(.white.opacity(0.6)).monospacedDigit()
                         Spacer()
                         Button { model.preview = nil } label: { Image(systemName: "xmark").font(.system(size: 15, weight: .medium)).foregroundStyle(.white).frame(width: 36, height: 36) }
-                            .buttonStyle(.plain).accessibilityLabel("Close").keyboardShortcut(.cancelAction)
+                            .buttonStyle(.plain).pointer().accessibilityLabel("Close").keyboardShortcut(.cancelAction)
                     }
                     // One photo at a time (no TabView: on the Mac it draws an empty tab bar). Swipe or ← → to move.
                     PhotoTile(path: p.paths[p.index], maxPixel: 2400, fit: true)
@@ -181,7 +209,7 @@ struct PreviewOverlay: View {
                         Text(URL(fileURLWithPath: p.paths[p.index]).lastPathComponent).font(.system(size: 12)).foregroundStyle(.white.opacity(0.6))
                         Button { step(1) } label: { Image(systemName: "chevron.right").frame(width: 32, height: 32) }.disabled(p.index == p.paths.count - 1)
                     }
-                    .buttonStyle(.plain).foregroundStyle(.white).font(.system(size: 17, weight: .medium))
+                    .buttonStyle(.plain).pointer().foregroundStyle(.white).font(.system(size: 17, weight: .medium))
                 }
                 .padding(24)
                 #if os(iOS)

@@ -7,7 +7,7 @@ import AppKit
 /// How the X-E5 picks a recipe: the film simulation dial wins; C1–C7 apply only on C (Fujifilm's manual).
 /// docs/USING-SLOTS.md says the same.
 struct SlotsHelpSheet: View {
-    @Environment(\.dismiss) private var dismiss
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -33,7 +33,7 @@ struct SlotsHelpSheet: View {
                 }
                 .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true).padding(.top, 12)
             }
-            HStack { Spacer(); PillButton(title: "Done", primary: true) { dismiss() } }.padding(.top, 12)
+            HStack { Spacer(); PillButton(title: "Done", primary: true) { model.closeSheet() } }.padding(.top, 12)
         }
         .padding(20).sheetSize(560, 560)
     }
@@ -75,7 +75,7 @@ private struct DialDrawing: View {
 
 /// The five checks of `fuji doctor` and what to do when each fails (docs/CONNECT.md).
 struct TroubleSheet: View {
-    @Environment(\.dismiss) private var dismiss
+    @Environment(AppModel.self) private var model
     let rows: [(String, String, String)] = [
         ("1 USB", "The Mac doesn't see a Fujifilm", "Camera on? Try another cable: charge-only cables look the same. USB POWER SUPPLY/COMM SETTING › AUTO. Plug straight into the Mac."),
         ("2 Camera", "On USB, but not offered as a camera", "Unplug, wait 3 s, plug in. Quit photo apps. Does Image Capture list it?"),
@@ -103,7 +103,7 @@ struct TroubleSheet: View {
             .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true).padding(.top, 12)
             Text("Seen on a real X-E5: as a card reader it still answers, but offers only 5 settings and refuses the slots; Preview offers to import. After switching the mode and reconnecting with the camera off: 61 settings, C1–C7 readable.")
                 .font(.system(size: 12)).foregroundStyle(.secondary).padding(.top, 10).fixedSize(horizontal: false, vertical: true)
-            HStack { Spacer(); PillButton(title: "Done", primary: true) { dismiss() } }.padding(.top, 14)
+            HStack { Spacer(); PillButton(title: "Done", primary: true) { model.closeSheet() } }.padding(.top, 14)
         }
         .padding(20).sheetSize(600)
     }
@@ -112,7 +112,6 @@ struct TroubleSheet: View {
 /// Snapshots of every slot, saved on connect and before each write (in the library's backups folder).
 struct BackupsSheet: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -131,7 +130,7 @@ struct BackupsSheet: View {
                                 Spacer()
                                 #if os(macOS)
                                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-                                    .buttonStyle(.plain).underline().font(.system(size: 12))
+                                    .buttonStyle(.plain).pointer().underline().font(.system(size: 12))
                                 #endif
                             }
                             .padding(.vertical, 6)
@@ -141,7 +140,7 @@ struct BackupsSheet: View {
                 }
                 .frame(maxHeight: 300).padding(.top, 10)
             }
-            HStack { Spacer(); PillButton(title: "Done", primary: true) { dismiss() } }.padding(.top, 14)
+            HStack { Spacer(); PillButton(title: "Done", primary: true) { model.closeSheet() } }.padding(.top, 14)
         }
         .padding(20).sheetSize(520)
     }
@@ -151,7 +150,6 @@ struct BackupsSheet: View {
 /// Write = one backup of every slot, then each slot written and read back (AppModel.writeChanges).
 struct ReviewSheet: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -166,7 +164,7 @@ struct ReviewSheet: View {
                                 Text("\(s.id) ← \(model.match(s.draft)?.name ?? (s.name.isEmpty ? s.draft.film : s.name.capitalized))")
                                     .font(.system(size: 16, weight: .bold))
                                 Spacer()
-                                Button("Undo") { model.revert(s.id) }.buttonStyle(.plain).font(.system(size: 12.5))
+                                Button("Undo") { model.revert(s.id) }.buttonStyle(.plain).pointer().font(.system(size: 12.5))
                             }
                             let diffs = (s.name != s.camName ? ["Name: \(s.camName.isEmpty ? "—" : s.camName) → \(s.name)"] : []) + s.cam.differences(to: s.draft)
                             VStack(alignment: .leading, spacing: 0) {
@@ -191,7 +189,7 @@ struct ReviewSheet: View {
                 }
             }
             HStack {
-                Button("Cancel") { dismiss() }.buttonStyle(.plain)
+                Button("Cancel") { model.closeSheet() }.buttonStyle(.plain).pointer()
                 Spacer()
                 Pill(title: "Write \(model.changes.count) change\(model.changes.count == 1 ? "" : "s")") { Task { await model.writeChanges() } }
                     .disabled(model.changes.isEmpty)
@@ -208,7 +206,6 @@ struct ReviewSheet: View {
 /// Without a recipe (a slot that isn't one) it shows just the settings.
 struct RecipeSettingsSheet: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
     @State private var draft: Recipe?
     @State private var newTag = ""
 
@@ -245,7 +242,7 @@ struct RecipeSettingsSheet: View {
                                 }
                                 HStack {
                                     TextField("New tag", text: $newTag).textFieldStyle(.roundedBorder).frame(maxWidth: 200).onSubmit(addTag)
-                                    Button("Add", action: addTag).buttonStyle(.plain).disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
+                                    Button("Add", action: addTag).buttonStyle(.plain).pointer().disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
                                 }
                             }
                         }
@@ -279,13 +276,13 @@ struct RecipeSettingsSheet: View {
                 .padding(24)
             }
             HStack {
-                Button("Copy as text") { copyToPasteboard("\(draft?.name ?? model.slot?.id ?? "")\n\(settings.text)"); model.say("Copied as text") }.buttonStyle(.plain)
+                Button("Copy as text") { copyToPasteboard("\(draft?.name ?? model.slot?.id ?? "")\n\(settings.text)"); model.say("Copied as text") }.buttonStyle(.plain).pointer()
                 Spacer()
                 if draft != nil && draft != original {
-                    Button("Cancel") { dismiss() }.buttonStyle(.plain).keyboardShortcut(.cancelAction)
+                    Button("Cancel") { model.sheetWillClose = nil; model.closeSheet() }.buttonStyle(.plain).pointer()
                     PillButton(title: "Save", primary: true) { save() }.keyboardShortcut(.defaultAction)
                 } else {
-                    PillButton(title: "Done", primary: true) { dismiss() }.keyboardShortcut(.defaultAction)
+                    PillButton(title: "Done", primary: true) { model.closeSheet() }.keyboardShortcut(.defaultAction)
                 }
             }
             .padding(.horizontal, 24).padding(.vertical, 14)
@@ -293,7 +290,15 @@ struct RecipeSettingsSheet: View {
         }
         .sheetSize(540, 680)
         .background(Theme.paper)
-        .onAppear { draft = original }
+        .onAppear {
+            draft = original
+            // Esc, a click outside (Mac) or a swipe down (iPhone) closes and keeps the edits, like Notion.
+            model.sheetWillClose = { [model] in
+                guard var r = draft, r != original else { return }
+                r.name = r.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !r.name.isEmpty { model.update(r) }
+            }
+        }
     }
 
     private func field<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
@@ -337,6 +342,6 @@ struct RecipeSettingsSheet: View {
         guard var r = draft else { return }
         r.name = r.name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !r.name.isEmpty else { model.say("A recipe needs a name"); return }
-        if model.update(r) { dismiss() }
+        if model.update(r) { model.sheetWillClose = nil; model.closeSheet() }
     }
 }

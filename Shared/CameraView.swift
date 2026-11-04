@@ -74,12 +74,13 @@ private struct SlotList: View {
                 .background(model.selectedSlot == s.id ? Theme.raised : .clear, in: RoundedRectangle(cornerRadius: 12))
                 .contentShape(Rectangle())
                 .onTapGesture { model.selectedSlot = s.id; if s.dial { model.editing = false } }
+                .pointer()
                 .dropDestination(for: String.self) { items, _ in
                     guard !s.dial, let r = model.recipe(items.first) else { return false }
                     model.put(r, in: s.id); return true
                 }
         } else {
-            NavigationLink(value: s.id) { content(s).background(Theme.card, in: RoundedRectangle(cornerRadius: 16)) }.buttonStyle(.plain)
+            NavigationLink(value: s.id) { content(s).background(Theme.card, in: RoundedRectangle(cornerRadius: 16)) }.buttonStyle(.plain).pointer()
         }
     }
 
@@ -124,16 +125,16 @@ struct SlotDetail: View {
                             PhotoTile(path: photos.first, maxPixel: 700)
                                 .frame(width: regular ? 190 : 96, height: regular ? 127 : 96)
                                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                .onTapGesture { model.show(photos, at: 0, title: r?.name ?? s.id) }
+                                .onTapGesture { model.show(photos, at: 0, title: r?.name ?? s.id) }.pointer()
                         }
                         VStack(alignment: .leading, spacing: 6) {
                             InkHeadline(text: "\(s.id.lowercased()): \((s.unused && !s.changed) ? "empty" : (r?.name ?? (s.name.isEmpty ? s.draft.film : s.name)).lowercased()).", size: regular ? 34 : 28)
                             Text(subtitle(s, r, hist)).font(.system(size: 14)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                             HStack(spacing: 14) {
-                                if !s.dial { Button(model.editing ? "Hide settings" : "Settings ›") { model.editing.toggle() }.buttonStyle(.plain) }
-                                else { Button("Settings ›") { model.editing = false; model.settingsFor = nil; model.sheet = .settings }.buttonStyle(.plain) }
-                                if s.changed && model.askBeforeWriting { Button("Revert") { model.revert(s.id) }.buttonStyle(.plain) }
-                                Button("How to shoot with it") { model.sheet = .help }.buttonStyle(.plain).foregroundStyle(.secondary)
+                                if !s.dial { Button(model.editing ? "Hide settings" : "Settings ›") { model.editing.toggle() }.buttonStyle(.plain).pointer() }
+                                else { Button("Settings ›") { model.editing = false; model.settingsFor = nil; model.sheet = .settings }.buttonStyle(.plain).pointer() }
+                                if s.changed && model.askBeforeWriting { Button("Revert") { model.revert(s.id) }.buttonStyle(.plain).pointer() }
+                                Button("How to shoot with it") { model.sheet = .help }.buttonStyle(.plain).pointer().foregroundStyle(.secondary)
                             }
                             .font(.system(size: 13, weight: .medium)).padding(.top, 2)
                         }
@@ -213,6 +214,6 @@ struct SlotDetail: View {
             .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.line))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plain).pointer()
     }
 }

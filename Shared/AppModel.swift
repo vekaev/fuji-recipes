@@ -55,6 +55,14 @@ final class AppModel {
         didSet { UserDefaults.standard.set(askBeforeWriting, forKey: "askBeforeWriting") }
     }
     var toastAction: ToastAction?
+    /// Runs when a sheet closes without its own button (Esc, a click outside, a swipe down): the recipe page saves.
+    var sheetWillClose: (() -> Void)?
+    func closeSheet() {
+        let hook = sheetWillClose
+        sheetWillClose = nil
+        hook?()
+        sheet = nil
+    }
     struct ToastAction { let title: String; let run: () -> Void }
     private var writeTask: Task<Void, Never>?
     private var writing = false

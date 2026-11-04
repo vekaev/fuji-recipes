@@ -56,6 +56,7 @@ struct InkHeadline: View {
 struct InkPress: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .pointer()
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .opacity(configuration.isPressed ? 0.85 : 1)
             .animation(.spring(response: 0.2, dampingFraction: 0.7), value: configuration.isPressed)
@@ -94,7 +95,7 @@ struct Chip: View {
             .foregroundStyle(on ? Theme.paper : Theme.ink)
             .background(on ? Theme.ink : .clear, in: Capsule())
             .overlay { if !on { Capsule().stroke(Color.primary.opacity(0.16), lineWidth: 1) } }
-        if let action { Button(action: action) { label }.buttonStyle(.plain) } else { label }
+        if let action { Button(action: action) { label }.buttonStyle(.plain).pointer() } else { label }
     }
 }
 
@@ -274,10 +275,20 @@ struct PillButton: View {
 }
 
 extension View {
+    /// Clickable things show the pointing hand on the Mac (and lift under an iPad pointer).
+    @ViewBuilder func pointer() -> some View {
+        #if os(macOS)
+        if #available(macOS 15, *) { self.pointerStyle(.link) }
+        else { self.onHover { inside in (inside ? NSCursor.pointingHand : NSCursor.arrow).set() } }
+        #else
+        self.hoverEffect()
+        #endif
+    }
+
     /// Mac sheets get a fixed size; on iPhone and iPad they size themselves.
     @ViewBuilder func sheetSize(_ w: CGFloat, _ h: CGFloat? = nil) -> some View {
         #if os(macOS)
-        self.frame(width: w, height: h)
+        self.frame(width: w).frame(idealHeight: h, maxHeight: h ?? .infinity)
         #else
         self
         #endif
@@ -302,5 +313,6 @@ struct PhotoCell: View {
             .background(Theme.raised)
             .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
             .contentShape(Rectangle())
+            .pointer()
     }
 }

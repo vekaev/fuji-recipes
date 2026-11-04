@@ -19,7 +19,7 @@ struct LooksView: View {
                             .font(regular ? .title3 : .body).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         #if os(iOS)
                         Button(model.recipes.isEmpty ? "Choose your Fuji Recipes folder" : "Library: \(model.library.root.lastPathComponent)") { model.pickingLibrary = true }
-                            .buttonStyle(.plain).font(.system(size: 14, weight: .semibold)).padding(.top, 2)
+                            .buttonStyle(.plain).pointer().font(.system(size: 14, weight: .semibold)).padding(.top, 2)
                         #endif
                     }
                     filters
@@ -67,7 +67,7 @@ struct LookCard: View {
             } else {
                 VStack(alignment: .leading, spacing: 9) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text(recipe.name).font(.system(size: 19, weight: .bold)).tracking(-0.3).onTapGesture { edit() }
+                        Text(recipe.name).font(.system(size: 19, weight: .bold)).tracking(-0.3).onTapGesture { edit() }.pointer()
                         Spacer()
                         favorite
                     }
@@ -77,7 +77,7 @@ struct LookCard: View {
                     HStack {
                         Text(model.whereabouts(recipe)).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
                         Spacer()
-                        Button("Edit ›") { edit() }.font(.system(size: 13)).buttonStyle(.plain)
+                        Button("Edit ›") { edit() }.font(.system(size: 13)).buttonStyle(.plain).pointer()
                         putMenu
                     }
                 }
@@ -107,7 +107,7 @@ struct LookCard: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 Text(recipe.name).font(.system(size: 19, weight: .bold)).tracking(-0.3).lineLimit(2)
-                    .onTapGesture { edit() }.help("Edit name, description and tags")
+                    .onTapGesture { edit() }.pointer().help("Edit name, description and tags")
                 Spacer(minLength: 4)
                 favorite
             }
@@ -115,7 +115,7 @@ struct LookCard: View {
             tags
             Text(model.whereabouts(recipe)).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 12) {
-                Button("Edit ›") { edit() }.buttonStyle(.plain)
+                Button("Edit ›") { edit() }.buttonStyle(.plain).pointer()
                 if model.connected { putMenu }
             }
             .font(.system(size: 12))
@@ -135,7 +135,7 @@ struct LookCard: View {
         Button { model.toggleFavorite(recipe) } label: {
             Image(systemName: recipe.status == "favorite" ? "heart.fill" : "heart").font(.system(size: 12))
         }
-        .buttonStyle(.plain).foregroundStyle(recipe.status == "favorite" ? Theme.ink : Color.secondary)
+        .buttonStyle(.plain).pointer().foregroundStyle(recipe.status == "favorite" ? Theme.ink : Color.secondary)
         .accessibilityLabel(recipe.status == "favorite" ? "Remove from favorites" : "Favorite")
     }
 
@@ -156,7 +156,7 @@ struct LookCard: View {
                 Text("Plug in your camera first")
             }
         } label: { Text("Put in…").font(.system(size: 13, weight: .semibold)) }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().pointer()
     }
 
     private func tile(_ path: String?, _ i: Int, _ all: [String], ratio: CGFloat) -> some View {
@@ -190,7 +190,7 @@ struct SlotColumn: View {
                 }
             } else {
                 Text("Plug in your Fujifilm to drop looks on its slots.").font(.system(size: 12.5)).foregroundStyle(.secondary)
-                Button("How to connect") { model.tab = .camera }.buttonStyle(.plain).font(.system(size: 13, weight: .semibold)).padding(.top, 4)
+                Button("How to connect") { model.tab = .camera }.buttonStyle(.plain).pointer().font(.system(size: 13, weight: .semibold)).padding(.top, 4)
                 Spacer()
             }
         }
@@ -230,6 +230,7 @@ struct SlotDropRow: View {
         .opacity(slot.dial ? 0.7 : 1)
         .contentShape(Rectangle())
         .onTapGesture { model.selectedSlot = slot.id; model.tab = .camera }
+        .pointer()
         .dropDestination(for: String.self) { items, _ in
             guard !slot.dial, let slug = items.first, let r = model.recipe(slug) else { return false }
             model.put(r, in: slot.id)

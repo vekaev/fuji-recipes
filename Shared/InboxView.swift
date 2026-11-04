@@ -139,7 +139,7 @@ private struct ReadCard: View {
                 Pill(title: "Skip", primary: false) { model.skip(item) }.fixedSize()
             }
             .scaleEffect(0.86, anchor: .leading)
-            Button("Settings ›") { model.settingsFor = item.recipe; model.sheet = .settings }.buttonStyle(.plain).font(.system(size: 12))
+            Button("Settings ›") { model.settingsFor = item.recipe; model.sheet = .settings }.buttonStyle(.plain).pointer().font(.system(size: 12))
         }
         .padding(12)
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
