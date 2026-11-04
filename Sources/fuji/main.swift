@@ -9,7 +9,7 @@ import Foundation
 // ImageCaptureCore delivers its callbacks on the main run loop, so the main thread only runs the loop and all
 // work happens on a background thread.
 
-let version = "0.1.0"
+let version = "0.2.0"
 var args = Array(CommandLine.arguments.dropFirst())
 if let i = args.firstIndex(of: "--simulate") { args.remove(at: i); Cameras.shared.simulate = true }
 let command = args.first ?? "help"
