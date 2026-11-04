@@ -167,13 +167,8 @@ struct PhotoTile: View {
                     .clipped()
             } else {
                 if path == nil || missing {
-                    // No photo for this one yet: a quiet tile with an aperture mark, no words.
-                    Theme.raised.opacity(0.55).overlay {
-                        Image(systemName: "camera.aperture").font(.system(size: 15, weight: .light))
-                            .foregroundStyle(Theme.ink.opacity(0.18))
-                    }
-                    .help(placeholder.isEmpty ? "" : "No photo yet")
-                    .accessibilityLabel("No photo yet")
+                    Color.clear   // no photo: the tile stays empty
+                        .accessibilityHidden(true)
                 } else {
                     Shimmer()   // loading
                 }
@@ -343,7 +338,6 @@ struct PhotoCell: View {
             .aspectRatio(ratio, contentMode: .fit)
             .frame(maxWidth: .infinity)
             .overlay { PhotoTile(path: path, maxPixel: maxPixel, fitPortrait: fitPortrait, placeholder: placeholder) }
-            .background(Theme.raised)
             .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
             .contentShape(Rectangle())
             .pointer()

@@ -36,15 +36,25 @@ struct LooksView: View {
         .background(Theme.paper)
     }
 
+    private func status(_ title: String, _ key: String) -> some View {
+        let n = model.recipes.filter { $0.status == key }.count
+        let tag = "status:" + key
+        return Chip(title: n > 0 && key != "favorite" ? "\(title) \(n)" : title, on: model.tagFilter == tag) {
+            model.tagFilter = model.tagFilter == tag ? nil : tag
+        }
+    }
+
     private var filters: some View {
         @Bindable var model = model
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
+                // Where a recipe stands first (All · Shot with · To try · ♡), then what it looks like (tags).
                 Chip(title: "All \(model.recipes.count)", on: model.tagFilter == nil) { model.tagFilter = nil }
+                status("Shot with", "mine")
+                status("To try", "to-try")
+                status("♡", "favorite")
+                if !model.allTags.isEmpty { Theme.line.frame(width: 1, height: 16).padding(.horizontal, 4) }
                 ForEach(model.allTags, id: \.self) { t in Chip(title: t, on: model.tagFilter == t) { model.tagFilter = model.tagFilter == t ? nil : t } }
-                Chip(title: "Shot with", on: model.tagFilter == "status:mine") { model.tagFilter = model.tagFilter == "status:mine" ? nil : "status:mine" }
-                Chip(title: "To try", on: model.tagFilter == "status:to-try") { model.tagFilter = model.tagFilter == "status:to-try" ? nil : "status:to-try" }
-                Chip(title: "♡", on: model.tagFilter == "status:favorite") { model.tagFilter = model.tagFilter == "status:favorite" ? nil : "status:favorite" }
             }
         }
     }
