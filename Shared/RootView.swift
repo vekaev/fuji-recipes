@@ -34,7 +34,13 @@ struct RootView: View {
         .background(Theme.paper)
         .overlay(alignment: .bottom) {
             if let t = model.toast {
-                Text(t).font(.system(size: 12.5)).foregroundStyle(.white).multilineTextAlignment(.center)
+                HStack(spacing: 12) {
+                    Text(t).font(.system(size: 12.5)).foregroundStyle(.white).multilineTextAlignment(.center)
+                    if let a = model.toastAction {
+                        Button(a.title) { model.toast = nil; model.toastAction = nil; a.run() }
+                            .buttonStyle(.plain).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
+                    }
+                }
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     .background(Theme.onPhoto, in: RoundedRectangle(cornerRadius: 10))
                     .padding(.bottom, regular ? 26 : 90).padding(.horizontal, 20).transition(.opacity)
@@ -93,6 +99,8 @@ private struct TopBar: View {
                 Button("Connection Check…") { model.sheet = .trouble }
                 Button("Backups (\(model.backupCount))…") { model.sheet = .backups }
                 Divider()
+                Toggle("Ask Before Writing to the Camera", isOn: Binding(get: { model.askBeforeWriting }, set: { model.askBeforeWriting = $0 }))
+                Divider()
                 Button("Try with a Simulated X-E5") { model.trySimulated() }.disabled(model.connected)
                 Button("Reload Library") { model.reload() }
             } label: {
@@ -118,7 +126,7 @@ private struct TopBar: View {
     private var status: String {
         if let b = model.busy { return b }
         let n = model.changes.count
-        if n > 0 { return "\(n) change\(n > 1 ? "s" : "") for the camera" }
+        if n > 0 && model.askBeforeWriting { return "\(n) change\(n > 1 ? "s" : "") for the camera" }
         if model.connected { return "In sync with the camera" }
         return "\(model.recipes.count) recipes"
     }

@@ -49,6 +49,16 @@ final class AppModel {
     var history: [String: [SlotRecord]] = [:]
     var connected: Bool { info != nil && !slots.isEmpty }
     var changes: [Slot] { slots.filter(\.changed) }
+    /// Off (the default): a look put in a slot, Put back or a dial edit is written right away (a backup of that slot
+    /// first, read back after, Undo in the toast). On: changes wait for the review sheet.
+    var askBeforeWriting = UserDefaults.standard.bool(forKey: "askBeforeWriting") {
+        didSet { UserDefaults.standard.set(askBeforeWriting, forKey: "askBeforeWriting") }
+    }
+    var toastAction: ToastAction?
+    struct ToastAction { let title: String; let run: () -> Void }
+    private var writeTask: Task<Void, Never>?
+    private var writing = false
+    private var writeAgain = false
 
     // Inbox
     var inbox: [InboxItem] = []
@@ -225,6 +235,18 @@ final class AppModel {
         guard let i = slots.firstIndex(where: { $0.id == (id ?? selectedSlot) }), !slots[i].dial else { return }
         change(&slots[i])
         slots[i].draft.normalize()
+        if slots[i].changed { scheduleWrite(after: 0.8) }   // dial edits: once the dragging stops
+    }
+
+    /// Instant mode: write what changed after `seconds` of quiet (0 for a look dropped on a slot).
+    func scheduleWrite(after seconds: Double) {
+        guard !askBeforeWriting, connected else { return }
+        writeTask?.cancel()
+        writeTask = Task { [weak self] in
+            if seconds > 0 { try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
+            guard !Task.isCancelled else { return }
+            await self?.writeChanges()
+        }
     }
 
     /// Stage a recipe in a slot (drag onto it, or pick it). Nothing reaches the camera until Review & write.
@@ -233,12 +255,13 @@ final class AppModel {
         if s.dial { say("\(slotID) is set on the camera's dial; writing it comes after a test on your camera"); return }
         update(slotID) { $0.draft = r.settings; $0.name = PTPString.bankName(r.name.uppercased()) }
         selectedSlot = slotID
-        say("\(r.name) → \(slotID) · not on the camera yet")
+        if askBeforeWriting { say("\(r.name) → \(slotID) · not on the camera yet") } else { scheduleWrite(after: 0) }
     }
 
     func putBack(_ rec: SlotRecord) {
         update(rec.slot) { $0.draft = rec.settings; $0.name = rec.name }
-        say("\(rec.name.isEmpty ? rec.settings.film : rec.name) staged for \(rec.slot) · review to write")
+        if askBeforeWriting { say("\(rec.name.isEmpty ? rec.settings.film : rec.name) staged for \(rec.slot) · review to write") }
+        else { scheduleWrite(after: 0) }
     }
 
     func revert(_ id: String) { update(id) { $0.draft = $0.cam; $0.name = $0.camName } }
@@ -246,33 +269,55 @@ final class AppModel {
 
     func freeSlot() -> String? { slots.first { !$0.dial && $0.unused && !$0.changed }?.id ?? slots.first { !$0.dial }?.id }
 
-    /// One backup, then each changed slot: write what differs, read back, record in history.
+    /// Each changed slot: back it up (read from the camera), write what differs, read back, record in history.
+    /// Instant mode offers Undo, which writes the slots' previous contents back the same way.
     func writeChanges() async {
+        if writing { writeAgain = true; return }
         let todo = changes
         guard !todo.isEmpty, let cam = await Cameras.shared.current() else { return }
-        sheet = nil
+        writing = true
+        if sheet == .review { sheet = nil }
         busy = "Writing \(todo.map(\.id).joined(separator: ", "))…"
-        defer { busy = nil }
+        let before = todo.map { (id: $0.id, settings: $0.cam, name: $0.camName) }
         do {
             let i = try await cam.deviceInfo()
-            let banks = try await cam.readAll()
-            _ = try library.saveBackup(Snapshot(date: Date().isoStamp, reason: "Before writing \(todo.map(\.id).joined(separator: ", "))", camera: i, banks: banks))
+            var old: [Bank] = []
+            for s in todo { old.append(try await cam.readBank(s.index)) }
+            _ = try library.saveBackup(Snapshot(date: Date().isoStamp, reason: "Before writing \(todo.map(\.id).joined(separator: ", "))", camera: i, banks: old))
             var problems: [String] = []
             for s in todo {
                 let report = try await cam.writeBank(s.index, settings: s.draft, name: s.name)
                 library.recordWrite(i, slot: s.id, name: report.name, settings: report.after)
                 if let k = slots.firstIndex(where: { $0.id == s.id }) {
-                    slots[k].cam = report.after; slots[k].draft = report.after
-                    slots[k].camName = report.name; slots[k].name = report.name
+                    slots[k].cam = report.after; slots[k].camName = report.name
+                    // A newer edit made while this one was being written stays a draft (and is written next).
+                    if slots[k].draft == s.draft { slots[k].draft = report.after }
+                    if slots[k].name == s.name { slots[k].name = report.name }
                 }
                 if !report.ok { problems += report.refused.map { "\(s.id) \($0.field): \($0.response)" } + report.mismatches.map { "\(s.id) \($0)" } }
             }
             refreshHistory()
             backupCount = library.backups().count
-            say(problems.isEmpty ? "Wrote \(todo.map(\.id).joined(separator: ", ")) · read back OK · to shoot: dial on C, Q, pick the slot"
-                                 : "Written with differences: \(problems.joined(separator: "; "))")
+            let what = todo.map { "\(match($0.draft)?.name ?? ($0.name.isEmpty ? $0.draft.film : $0.name.capitalized)) in \($0.id)" }.joined(separator: ", ")
+            if !problems.isEmpty {
+                say("Written with differences: \(problems.joined(separator: "; "))")
+            } else if askBeforeWriting {
+                say("Wrote \(todo.map(\.id).joined(separator: ", ")) · read back OK · to shoot: dial on C, Q, pick the slot")
+            } else {
+                say("\(what) · on the camera", action: ToastAction(title: "Undo") { [weak self] in
+                    guard let self else { return }
+                    for b in before { self.update(b.id) { $0.draft = b.settings; $0.name = b.name } }
+                    self.scheduleWrite(after: 0)
+                })
+            }
         } catch {
             say("Couldn't write: \(error)")
+        }
+        busy = nil
+        writing = false
+        if writeAgain {
+            writeAgain = false
+            await writeChanges()
         }
     }
 
@@ -309,10 +354,12 @@ final class AppModel {
         reloadInbox(); reload()
     }
 
-    func say(_ text: String) {
+    func say(_ text: String, action: ToastAction? = nil) {
         toast = text
+        toastAction = action
         toastTask?.cancel()
-        toastTask = Task { try? await Task.sleep(nanoseconds: 3_500_000_000); if !Task.isCancelled { toast = nil } }
+        let seconds: UInt64 = action == nil ? 3_500_000_000 : 8_000_000_000
+        toastTask = Task { try? await Task.sleep(nanoseconds: seconds); if !Task.isCancelled { toast = nil; toastAction = nil } }
     }
 }
 

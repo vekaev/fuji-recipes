@@ -25,7 +25,7 @@ struct SlotsHelpSheet: View {
                         }
                     }
                     heading("Put a recipe in a slot")
-                    Text("**From the Mac:** select a recipe, *Put in a slot*, check the changes, Write. A backup of every slot is saved first and the slot is read back.")
+                    Text("**From the app:** drop a look on a slot, or *Put in…*. It's written right away: the slot is saved first and read back after, and Undo puts the old one back. (Settings: *Ask before writing* brings back a review.)")
                     Text("**On the camera:** set the recipe's settings, then MENU/OK › IMAGE QUALITY SETTING › EDIT/SAVE CUSTOM SETTING › C3 › OK. Same screen: EDIT/CHECK, EDIT CUSTOM NAME, COPY, ERASE. Hold Q to jump there. Keep AUTO UPDATE CUSTOM SETTING on DISABLE so recipes stay exact.")
                     heading("FS1–FS3")
                     Text("IMAGE QUALITY SETTING › FILM SIMULATION DIAL SETTING › FS1–FS3: pick the film and turn FS RECIPE on. Then the dial position *is* the recipe. This app reads them; writing them comes later.")

@@ -26,9 +26,10 @@ struct FujiRecipesApp: App {
                 Button("Check Connection") { Task { await model.check() } }.keyboardShortcut("r")
                 Button("Settings of This Slot") { model.tab = .camera; model.editing.toggle() }.keyboardShortcut("e", modifiers: [])
                     .disabled(!model.connected || model.slot?.dial != false)
+                Toggle("Ask Before Writing", isOn: $model.askBeforeWriting)
                 Button("Review Changes…") { model.sheet = .review }.keyboardShortcut(.return, modifiers: .command)
-                    .disabled(model.changes.isEmpty)
-                Button("Undo All Changes") { model.revertAll() }.disabled(model.changes.isEmpty)
+                    .disabled(model.changes.isEmpty || !model.askBeforeWriting)
+                Button("Undo All Changes") { model.revertAll() }.disabled(model.changes.isEmpty || !model.askBeforeWriting)
                 Divider()
                 Button("Backups…") { model.sheet = .backups }
                 Button("Try with a Simulated X-E5") { model.trySimulated() }.disabled(model.connected)
@@ -42,6 +43,9 @@ struct FujiRecipesApp: App {
 
         Settings {
             Form {
+                Toggle("Ask before writing to the camera", isOn: $model.askBeforeWriting)
+                Text("Off: a look you put in a slot is written right away. Each write saves that slot first, reads it back, and the message offers Undo.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Picker("Appearance", selection: $appearance) {
                     ForEach(AppAppearance.allCases) { Text($0.label).tag($0) }
                 }

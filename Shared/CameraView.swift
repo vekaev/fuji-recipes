@@ -56,9 +56,12 @@ private struct SlotList: View {
                     SectionTitle(text: "Film simulation dial").padding(.top, 10)
                     ForEach(model.slots.filter(\.dial)) { row($0) }
                 }
-                if !model.changes.isEmpty {
+                if model.askBeforeWriting && !model.changes.isEmpty {
                     Pill(title: "Review \(model.changes.count) change\(model.changes.count > 1 ? "s" : "")", wide: true) { model.sheet = .review }.padding(.top, 10)
                 }
+                Toggle("Ask before writing", isOn: Binding(get: { model.askBeforeWriting }, set: { model.askBeforeWriting = $0 }))
+                    .toggleStyle(.switch).controlSize(.mini).font(.system(size: 12)).foregroundStyle(.secondary)
+                    .padding(.top, 14).padding(.horizontal, 6)
             }
             .padding(.horizontal, 14).padding(.vertical, regular ? 22 : 12)
         }
@@ -129,7 +132,7 @@ struct SlotDetail: View {
                             HStack(spacing: 14) {
                                 if !s.dial { Button(model.editing ? "Hide settings" : "Settings ›") { model.editing.toggle() }.buttonStyle(.plain) }
                                 else { Button("Settings ›") { model.editing = false; model.settingsFor = nil; model.sheet = .settings }.buttonStyle(.plain) }
-                                if s.changed { Button("Revert") { model.revert(s.id) }.buttonStyle(.plain) }
+                                if s.changed && model.askBeforeWriting { Button("Revert") { model.revert(s.id) }.buttonStyle(.plain) }
                                 Button("How to shoot with it") { model.sheet = .help }.buttonStyle(.plain).foregroundStyle(.secondary)
                             }
                             .font(.system(size: 13, weight: .medium)).padding(.top, 2)
@@ -146,7 +149,7 @@ struct SlotDetail: View {
                         Text("Set on the camera's dial: \(s.id) is read from the camera's settings file. Writing it comes after a test on your camera (you'll watch it).")
                             .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     } else {
-                        SectionTitle(text: "Swap in · what's there now moves to \(s.id)'s history")
+                        SectionTitle(text: "Swap in · \(model.askBeforeWriting ? "" : "written right away · ")what's there now moves to \(s.id)'s history")
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: regular ? 4 : 2), spacing: 12) {
                             ForEach(model.recipes.filter { $0.settings != s.draft }.prefix(regular ? 8 : 6), id: \.slug) { pick($0, slot: s) }
                         }
@@ -168,7 +171,7 @@ struct SlotDetail: View {
                             }
                         }
                     }
-                    if !model.changes.isEmpty && !regular {
+                    if model.askBeforeWriting && !model.changes.isEmpty && !regular {
                         Pill(title: "Review \(model.changes.count) change\(model.changes.count > 1 ? "s" : "")", wide: true) { model.sheet = .review }
                     }
                 }
@@ -185,7 +188,7 @@ struct SlotDetail: View {
     private func subtitle(_ s: AppModel.Slot, _ r: Recipe?, _ hist: [SlotRecord]) -> String {
         if s.unused && !s.changed { return "Nothing here yet. Drop or pick a look below." }
         var p: [String] = []
-        if s.changed { p.append("changed, not on the camera yet") }
+        if s.changed { p.append(model.askBeforeWriting ? "changed, not on the camera yet" : "writing…") }
         if let from = hist.first?.from { p.append("since \(AppModel.short(from))") }
         if let r {
             if let last = r.lastShot { p.append("last used \(AppModel.short(last))") }

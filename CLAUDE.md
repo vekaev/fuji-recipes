@@ -42,8 +42,12 @@ Decisions and why: `docs/adr/`. Words: `GLOSSARY.md`. Research: `docs/research/b
 
 ## Camera safety (non-negotiable)
 
-- Every camera write is confirmed with a "now → new" review, saves a backup of every slot first, and reads the
-  slot back. The app's only write path is `AppModel.write…`; MCP's is `fuji_plan_write` → approve → `fuji_apply_write`.
+- In the app the owner's own action is the approval (owner's choice, 2026-11-04): a look dropped on a slot, Put back,
+  or a dial edit (0.8 s after the last change) is written right away. Every write still backs up the slots it
+  changes (read from the camera) first, reads them back, and the toast offers Undo (8 s), which writes the old
+  contents back the same way. "Ask before writing" (Settings, ⋯, Camera menu; off by default) brings back the
+  "now → new" review. The app's only write path is `AppModel.writeChanges`.
+- Claude never writes on its own: MCP stays `fuji_plan_write` → the owner approves the preview → `fuji_apply_write`.
 - Every write records what the slot held in the slot history (`history/`), so nothing is lost: "Put back" restores it.
 - FS1–FS3 writing and whole-settings-file restores stay off until a supervised test on the owner's X-E5 passes
   (ADR 0004). Never write a slot to verify something; test with `--simulate` / `SimulatedCamera`.
@@ -81,6 +85,7 @@ Shared with `/recipe` and `fuji mcp`: field names in skills/fuji-recipes/referen
 | Fast photos: thumbnails decoded in parallel, kept as small JPEGs in Caches/thumbs (keyed by path, size, date, pixels) | ✓ | ✓ | — |
 | Click/tap an image → preview, arrows / swipe between images and recipes | ✓ (Space / Esc) | ✓ (tap, swipe) | — |
 | Camera page: slots with looks, selected slot's history, swap in, review "now → new", write | ✓ drag a look onto a slot or pick | ✓ tap a slot, pick a look | `fuji_slots`, `fuji_plan_write` / `fuji_apply_write` |
+| Instant writes: drop / Put in / Put back / dial edits go straight to the camera (slot backup, read-back, Undo in the toast); "Ask before writing" setting brings the review back | ✓ (Settings, ⋯, Camera menu, Camera page) | ✓ (Camera page toggle; ⋯ on iPad) | plan → approve → apply (unchanged) |
 | Slot history + Put back | ✓ | ✓ | `fuji_slot_history` |
 | Inbox: paste/drop links, Instagram export, Keep/Skip | ✓ (drop, paste) | ✓ (paste; share extension: later) | `fuji_inbox`, `fuji_inbox_add`, `fuji_inbox_resolve` |
 | Reading reels | via Claude / `/recipe` on the Mac | queued, read on the Mac | `fuji_inbox` → `/recipe` |

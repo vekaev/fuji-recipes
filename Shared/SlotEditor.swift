@@ -75,11 +75,14 @@ struct SlotEditor: View {
                 }
 
                 HStack(spacing: 8) {
-                    Text(s.changed ? "Changed · not on the camera yet" : "Same as the camera")
+                    Text(model.askBeforeWriting ? (s.changed ? "Changed · not on the camera yet" : "Same as the camera")
+                                                : (s.changed || model.busy != nil ? "Writing to the camera…" : "On the camera · changes are written as you go"))
                         .font(.system(size: 11.5)).foregroundStyle(.secondary)
                     Spacer()
-                    PillButton(title: "Revert") { model.revert(s.id) }.disabled(!s.changed).opacity(s.changed ? 1 : 0.35)
-                    PillButton(title: "Review", primary: true) { model.sheet = .review }.disabled(!s.changed).opacity(s.changed ? 1 : 0.35)
+                    if model.askBeforeWriting {
+                        PillButton(title: "Revert") { model.revert(s.id) }.disabled(!s.changed).opacity(s.changed ? 1 : 0.35)
+                        PillButton(title: "Review", primary: true) { model.sheet = .review }.disabled(!s.changed).opacity(s.changed ? 1 : 0.35)
+                    }
                 }
                 .padding(.horizontal, 14).frame(height: 44)
                 .overlay(alignment: .top) { Theme.line.frame(height: 1) }

@@ -185,7 +185,7 @@ struct SlotColumn: View {
                         }
                     }
                 }
-                if !model.changes.isEmpty {
+                if model.askBeforeWriting && !model.changes.isEmpty {
                     Pill(title: "Review \(model.changes.count) change\(model.changes.count > 1 ? "s" : "")", wide: true) { model.sheet = .review }
                 }
             } else {
