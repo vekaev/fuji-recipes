@@ -13,3 +13,5 @@ commit	dev	held_out	kept	description
 -	30.3	-46.6	discarded	WB shift shrunk 20% toward neutral
 -	28.4	-55.5	discarded	drop highlight cast feature
 -	26.1	-49.9	discarded	drop chroma90 feature
+79855d6	32.2	-51.2	kept	drop the two outer tone percentiles (2 and 98)
+-	30.5	-57.1	discarded	cast as warmth only (b* of mid and highlights)
