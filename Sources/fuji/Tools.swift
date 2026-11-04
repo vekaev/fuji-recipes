@@ -66,7 +66,7 @@ final class Tools: @unchecked Sendable {
             "shooting": ["type": "object", "description": "{iso, exposure_compensation, notes}: advice that a slot can't store"],
             "source": ["type": "object", "description": "{kind: reel|website|exif|camera|manual, url, creator, credit, transcript}"],
             "uncertain": ["type": "array", "items": ["type": "string"], "description": "Fields read with doubt, e.g. settings.wb_blue"],
-            "notes": ["type": "string"], "allowDuplicate": ["type": "boolean"]], "required": ["name", "settings"]],
+            "notes": ["type": "string"], "tags": ["type": "array", "items": ["type": "string"]], "allowDuplicate": ["type": "boolean"]], "required": ["name", "settings"]],
          "annotations": ["readOnlyHint": false, "destructiveHint": false]],
         ["name": "fuji_set_status", "description": "Mark a recipe favorite, tried, to-try, rejected or mine, optionally adding a note (\"too green in shade\").",
          "inputSchema": ["type": "object", "properties": ["recipe": recipeArg, "status": ["type": "string", "enum": Values.status], "note": ["type": "string"]], "required": ["recipe", "status"]],
@@ -82,6 +82,19 @@ final class Tools: @unchecked Sendable {
          "annotations": ["readOnlyHint": false, "destructiveHint": false]],
         ["name": "fuji_backup", "description": "Save a snapshot of every slot on the connected camera to the library's backups folder. Changes nothing on the camera.",
          "inputSchema": ["type": "object", "properties": ["reason": ["type": "string"]]], "annotations": ["readOnlyHint": false, "destructiveHint": false]],
+        ["name": "fuji_inbox", "description": "The inbox: reels, posts and screenshots waiting to become recipes (from the share sheet, pasted links, Instagram's saved-posts export, or you). Each item: id, url or image file, source, status (queued, read, kept, skipped, failed), recipe slug once read, note. To read a queued reel use the /recipe skill (transcribe --visual), save it with fuji_save_recipe (status to-try, credit), then fuji_inbox_resolve {id, status: read, recipe, note}. The owner keeps or skips it in the app.",
+         "inputSchema": ["type": "object", "properties": ["status": ["type": "string", "enum": InboxItem.Status.allCases.map(\.rawValue)], "limit": ["type": "integer", "description": "Default 50"]]], "annotations": ro],
+        ["name": "fuji_inbox_add", "description": "Queue links in the inbox: every Instagram reel/post, TikTok or YouTube short link found in text (paste many at once, or the contents of Instagram's saved-posts export). Already-queued links are skipped.",
+         "inputSchema": ["type": "object", "properties": ["text": ["type": "string"], "file": ["type": "string", "description": "Path to a file to scan for links instead, e.g. saved_posts.json from Instagram's \"Download your information\""]]],
+         "annotations": ["readOnlyHint": false, "destructiveHint": false]],
+        ["name": "fuji_inbox_resolve", "description": "Mark an inbox item: read (a recipe was saved: pass its slug and a note like \"1 value to check\"), kept, skipped, or failed (with why).",
+         "inputSchema": ["type": "object", "properties": ["id": ["type": "string"], "status": ["type": "string", "enum": InboxItem.Status.allCases.map(\.rawValue)], "recipe": ["type": "string"], "note": ["type": "string"]], "required": ["id", "status"]],
+         "annotations": ["readOnlyHint": false, "destructiveHint": false]],
+        ["name": "fuji_slot_history", "description": "What a camera slot (C1–C7, FS1–FS3) holds now and what it held before, with dates, newest first. Every write and every connect records it, so an old recipe can be put back with fuji_plan_write.",
+         "inputSchema": ["type": "object", "properties": ["slot": ["type": "string"]], "required": ["slot"]], "annotations": ro],
+        ["name": "fuji_tag", "description": "Add or remove tags on a recipe (\"Leica style\", \"Warm\", \"Cool\", \"B&W\", \"Bright day\", \"Night\", \"Film\", \"Punchy\", \"Soft\", or the owner's own). Tags describe the look; the app filters by them.",
+         "inputSchema": ["type": "object", "properties": ["recipe": recipeArg, "add": ["type": "array", "items": ["type": "string"]], "remove": ["type": "array", "items": ["type": "string"]]], "required": ["recipe"]],
+         "annotations": ["readOnlyHint": false, "destructiveHint": false]],
         ["name": "fuji_plan_write", "description": """
          Prepare writing recipes to the camera's custom slots WITHOUT writing; returns a plan id and a preview of every change (slot, old → new, field by field) to show the user. Operations:
          • {slot: "C3", recipe: "<slug or name>", name?: "<slot name, ≤25 ASCII>"} — a library recipe into a slot
@@ -128,6 +141,33 @@ final class Tools: @unchecked Sendable {
         case "fuji_backup":
             let url = try await backup(reason: a["reason"] as? String ?? "Asked for")
             return ["backup": url.path]
+        case "fuji_inbox":
+            var items = library.inbox()
+            if let s = a["status"] as? String { items = items.filter { $0.status.rawValue == s } }
+            let limit = a["limit"] as? Int ?? 50
+            let counts = Dictionary(grouping: library.inbox(), by: { $0.status.rawValue }).mapValues(\.count)
+            return ["counts": counts, "items": plain(Array(items.prefix(limit)))] as JSON
+        case "fuji_inbox_add":
+            var text = a["text"] as? String ?? ""
+            if let f = a["file"] as? String { text += (try? String(contentsOfFile: (f as NSString).expandingTildeInPath, encoding: .utf8)) ?? "" }
+            let added = try library.addToInbox(text: text, source: a["file"] != nil ? "instagram-export" : "claude")
+            return ["added": added.count, "inbox": library.inbox().filter { $0.status == .queued }.count] as JSON
+        case "fuji_inbox_resolve":
+            guard let status = InboxItem.Status(rawValue: try str(a, "status")) else { throw ToolError("status: queued, read, kept, skipped or failed") }
+            try library.updateInbox(try str(a, "id"), status: status, recipe: a["recipe"] as? String, note: a["note"] as? String)
+            return ["ok": true] as JSON
+        case "fuji_slot_history":
+            let cam = try await Cameras.shared.require()
+            let info = try await cam.deviceInfo()
+            return plain(library.history(info, slot: try str(a, "slot").uppercased()))
+        case "fuji_tag":
+            var r = try library.recipe(str(a, "recipe"))
+            var tags = r.tags ?? []
+            for t in a["add"] as? [String] ?? [] where !tags.contains(t) { tags.append(t) }
+            tags.removeAll { (a["remove"] as? [String] ?? []).contains($0) }
+            r.tags = tags.isEmpty ? nil : tags
+            try library.save(r, allowDuplicate: true)
+            return ["recipe": r.slug, "tags": tags] as JSON
         case "fuji_plan_write": return try await planWrite(a["operations"] as? [JSON] ?? [])
         case "fuji_apply_write": return try await applyWrite(str(a, "planId"))
         default: throw ToolError("Unknown tool \(name).")
@@ -159,6 +199,7 @@ final class Tools: @unchecked Sendable {
     func slots() async throws -> Any {
         let cam = try await Cameras.shared.require()
         let banks = try await cam.readAll()
+        if let i = try? await cam.deviceInfo() { library.observe(i, slots: banks.map { ($0.slot, $0.name, $0.settings) }) }
         var out = banks.map { b -> JSON in
             var o: JSON = ["slot": b.slot, "name": b.name, "summary": b.settings.summary, "settings": plain(b.settings)]
             if let r = library.match(b.settings) { o["recipe"] = r.slug; o["recipeName"] = r.name }
@@ -336,6 +377,7 @@ final class Tools: @unchecked Sendable {
         var reports: [Any] = []
         for w in plan.writes {
             let report = try await cam.writeBank(w.slot, settings: w.settings, name: w.name.isEmpty && !w.exactName ? nil : w.name)
+            library.recordWrite(info, slot: "C\(w.slot)", name: report.name, settings: report.after, how: w.exactName ? "put back" : "written")
             var o = plain(report) as? JSON ?? [:]
             o["ok"] = report.ok
             reports.append(o)

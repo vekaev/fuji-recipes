@@ -1,4 +1,4 @@
-#if canImport(ImageCaptureCore) && os(macOS)
+#if canImport(ImageCaptureCore)
 import Foundation
 
 /// The camera the CLI, the MCP server and the app talk to: the simulated X-E5 (`--simulate` / FUJI_SIMULATE=1) or the first Fujifilm on USB.
@@ -27,8 +27,12 @@ public final class Cameras: @unchecked Sendable {
 
     /// Why no camera is visible, from what USB and ImageCaptureCore see.
     public func noCameraAdvice() -> String {
+        #if os(macOS)
         let usb = Shell.run("/usr/sbin/ioreg", ["-p", "IOUSB", "-w0", "-l"])
         let fujiOnUSB = usb.contains("\"idVendor\" = 1227")
+        #else
+        let fujiOnUSB = false
+        #endif
         let others = CameraBrowser.shared.allDevices.map(\.name)
         if fujiOnUSB {
             return "A Fujifilm camera is on USB but not as a PTP camera: it's in USB CARD READER mode. \(USBMode.howToSet)"
@@ -37,6 +41,7 @@ public final class Cameras: @unchecked Sendable {
     }
 }
 
+#if os(macOS)
 public enum Shell {
     public static func run(_ path: String, _ args: [String]) -> String {
         let p = Process(); p.executableURL = URL(fileURLWithPath: path); p.arguments = args
@@ -46,4 +51,5 @@ public enum Shell {
         return String(decoding: d, as: UTF8.self)
     }
 }
+#endif
 #endif

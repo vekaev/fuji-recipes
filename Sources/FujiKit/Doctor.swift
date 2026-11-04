@@ -1,4 +1,4 @@
-#if canImport(ImageCaptureCore) && os(macOS)
+#if canImport(ImageCaptureCore)
 import Foundation
 
 /// `fuji doctor` / `fuji_doctor`: walks the connection one step at a time and stops at the first one that fails,
@@ -10,6 +10,11 @@ import Foundation
 ///   5 Slots    the custom-slot selector answers and C1…Cn can be counted
 ///   +          apps that grab cameras (Preview, Photos, Image Capture, X RAW Studio, Tether app…)
 public enum Doctor {
+    #if os(macOS)
+    static let system = "macOS"
+    #else
+    static let system = "iOS"
+    #endif
     public struct Step: Sendable { public var name: String; public var ok: Bool; public var saw: String; public var fix: String? }
 
     public static let grabbers = ["Preview", "Photos", "Image Capture", "FUJIFILM X RAW STUDIO", "FUJIFILM TETHER APP",
@@ -17,11 +22,16 @@ public enum Doctor {
 
     public static func run() async -> (steps: [Step], apps: [String]) {
         var steps: [Step] = []
+        #if os(macOS)
         let apps = grabbers.filter { name in !Shell.run("/usr/bin/pgrep", ["-x", name]).isEmpty }
+        #else
+        let apps: [String] = []   // iOS can't see the USB bus or other apps: the check starts at step 2
+        #endif
 
         if Cameras.shared.simulate {
             steps.append(Step(name: "USB", ok: true, saw: "simulated X-E5 (--simulate)", fix: nil))
         } else {
+            #if os(macOS)
             let usb = Shell.run("/usr/sbin/ioreg", ["-p", "IOUSB", "-w0", "-l"])
             let fuji = usb.contains("\"idVendor\" = 1227")
             let name = usb.components(separatedBy: "\n").first { $0.contains("\"USB Product Name\" = \"FUJIFILM") }?
@@ -29,14 +39,20 @@ public enum Doctor {
             steps.append(Step(name: "USB", ok: fuji, saw: fuji ? "\(name) is on USB" : "no Fujifilm device on USB",
                               fix: fuji ? nil : "Switch the camera on. Use a USB-C *data* cable (charge-only cables are common), ideally ≤ 1 m, straight into the Mac. On the camera, network/USB tab ▸ USB POWER SUPPLY/COMM SETTING must be AUTO or POWER SUPPLY OFF/COMM ON (POWER SUPPLY ON/COMM OFF blocks data)."))
             guard fuji else { return (steps, apps) }
+            #elseif targetEnvironment(simulator)
+            steps.append(Step(name: "USB", ok: false, saw: "the iOS Simulator has no USB", fix: "Run Fuji Recipes on a real iPhone or iPad with a USB-C port, or use the Mac app. Try the simulated X-E5 to look around."))
+            return (steps, apps)
+            #else
+            steps.append(Step(name: "USB", ok: true, saw: "USB-C (iPhone and iPad can't list the bus)", fix: nil))
+            #endif
         }
 
         guard let cam = await Cameras.shared.current(wait: 5) else {
-            steps.append(Step(name: "Camera", ok: false, saw: "on USB, but macOS doesn't offer it as a camera",
+            steps.append(Step(name: "Camera", ok: false, saw: "on USB, but \(system) doesn't offer it as a camera",
                               fix: "Unplug, wait 3 s, plug in again. If Image Capture.app doesn't list it either, restart the Mac's camera service: quit every photo app, then unplug and plug in."))
             return (steps, apps)
         }
-        steps.append(Step(name: "Camera", ok: true, saw: "macOS offers it as a PTP camera", fix: nil))
+        steps.append(Step(name: "Camera", ok: true, saw: "\(system) offers it as a PTP camera", fix: nil))
 
         guard let info = try? await cam.deviceInfo() else {
             steps.append(Step(name: "Session", ok: false, saw: "the camera doesn't answer",

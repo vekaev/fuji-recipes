@@ -4,14 +4,21 @@ import SwiftUI
 /// No camera ready: how to set the camera up (from Fujifilm's X-E5 manual) next to the live five-step check that
 /// `fuji doctor` runs, re-run every few seconds and on every plug-in. docs/CONNECT.md says the same in more words.
 struct SetupView: View {
+    #if os(iOS)
+    private let device = UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
+    #else
+    private let device = "Mac"
+    #endif
     @Environment(AppModel.self) private var model
+    @Environment(\.regularLayout) private var regular
 
     var body: some View {
+        let layout = regular ? AnyLayout(HStackLayout(alignment: .top, spacing: 44)) : AnyLayout(VStackLayout(alignment: .leading, spacing: 30))
         ScrollView {
-            HStack(alignment: .top, spacing: 44) {
+            layout {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Connect your Fujifilm").font(.system(size: 24, weight: .semibold))
-                    Text("Out of the box the camera connects as a card reader: the Mac sees your photos, not its settings. Set it up once, on the camera:")
+                    InkHeadline(text: "connect your fujifilm.", size: regular ? 40 : 32)
+                    Text("Out of the box the camera connects as a card reader: the \(device) sees your photos, not its settings. Set it up once, on the camera:")
                         .foregroundStyle(.secondary).padding(.top, 6).fixedSize(horizontal: false, vertical: true)
                     heading("Once, on the camera")
                     step(1, "Connection mode", crumbs: ["MENU/OK", "network/USB", "CONNECTION MODE", "USB RAW CONV./BACKUP RESTORE"],
@@ -20,18 +27,18 @@ struct SetupView: View {
                          why: "“POWER SUPPLY ON/COMM OFF” charges but blocks data.")
                     heading("Every time")
                     plain(1, "Switch the camera **off**.")
-                    plain(2, "Plug a USB-C **data** cable straight into the Mac.")
+                    plain(2, "Plug a USB-C **data** cable straight into the \(device).")
                     plain(3, "Switch the camera **on**. Its menu locks while connected; unplug to shoot.")
                     Text("Older bodies: SET UP › CONNECTION SETTING › PC CONNECTION MODE. The setting stays, and the camera shoots normally when unplugged.")
                         .font(.system(size: 12)).foregroundStyle(.secondary).padding(.top, 14)
                         .fixedSize(horizontal: false, vertical: true)
                     Button("How to shoot with C1–C7 and FS1–FS3") { model.sheet = .help }
-                        .buttonStyle(.link).font(.system(size: 12)).padding(.top, 6)
+                        .buttonStyle(.plain).underline().font(.system(size: 12)).padding(.top, 6)
                 }
                 .frame(maxWidth: 440, alignment: .leading)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    heading("Connection check").padding(.top, -18)
+                    heading("Connection check").padding(.top, regular ? -18 : 0)
                     ForEach(Array(rows.enumerated()), id: \.offset) { i, r in checkRow(i, r) }
                     if !model.appsHolding.isEmpty {
                         Text("Running now: \(model.appsHolding.joined(separator: ", ")). Quit them if a step fails: they can hold on to the camera.")
@@ -44,11 +51,11 @@ struct SetupView: View {
                     }
                     .padding(.top, 14)
                     Button("No camera at hand? Try with a simulated X-E5") { model.trySimulated() }
-                        .buttonStyle(.link).font(.system(size: 12)).padding(.top, 10)
+                        .buttonStyle(.plain).underline().font(.system(size: 12)).padding(.top, 10)
                 }
-                .frame(width: 330, alignment: .leading)
+                .frame(width: regular ? 330 : nil, alignment: .leading)
             }
-            .padding(.horizontal, 32).padding(.vertical, 44)
+            .padding(.horizontal, regular ? 32 : 18).padding(.vertical, regular ? 44 : 20)
             .frame(maxWidth: .infinity)
         }
     }
@@ -57,7 +64,7 @@ struct SetupView: View {
 
     private var rows: [Row] {
         let names = ["USB", "Camera", "Session", "Mode", "Slots"]
-        let waiting = ["A Fujifilm on USB", "macOS offers it as a camera", "It answers", "USB RAW CONV./BACKUP RESTORE", "C1–C7 readable"]
+        let waiting = ["A Fujifilm on USB", "\(device == "Mac" ? "macOS" : "iOS") offers it as a camera", "It answers", "USB RAW CONV./BACKUP RESTORE", "C1–C7 readable"]
         return names.enumerated().map { i, n in
             if let s = model.steps.first(where: { $0.name == n }) { return Row(name: n, state: s.ok ? 1 : 2, saw: s.saw, fix: s.fix) }
             return Row(name: n, state: 0, saw: waiting[i], fix: nil)

@@ -31,8 +31,24 @@ public struct Library: Sendable {
         if let env = ProcessInfo.processInfo.environment["FUJI_RECIPES"], !env.isEmpty {
             self.root = URL(fileURLWithPath: (env as NSString).expandingTildeInPath)
         } else {
-            self.root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents/FujiRecipes")
+            self.root = Library.defaultRoot
         }
+    }
+
+    /// iCloud Drive ▸ Fuji Recipes when iCloud Drive is on (so iPhone, iPad, Claude and /recipe share it), else
+    /// ~/Documents/FujiRecipes. On iOS the app passes the folder the owner picked; this is only a fallback there.
+    public static var defaultRoot: URL {
+        #if os(macOS)
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let iCloud = home.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs")
+        let cloudLibrary = iCloud.appendingPathComponent("Fuji Recipes")
+        let local = home.appendingPathComponent("Documents/FujiRecipes")
+        if FileManager.default.fileExists(atPath: cloudLibrary.path) { return cloudLibrary }
+        if FileManager.default.fileExists(atPath: iCloud.path), !FileManager.default.fileExists(atPath: local.path) { return cloudLibrary }
+        return local
+        #else
+        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Fuji Recipes")
+        #endif
     }
 
     var recipesDir: URL { root.appendingPathComponent("recipes") }

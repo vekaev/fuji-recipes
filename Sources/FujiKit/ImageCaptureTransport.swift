@@ -20,7 +20,16 @@ public final class CameraBrowser: NSObject, ICDeviceBrowserDelegate, @unchecked 
     public func start() {
         guard startedAt == nil else { return }
         startedAt = Date()
+        #if targetEnvironment(simulator)
+        return   // the iOS Simulator's ImageCaptureCore is a stub without USB (its browser selectors don't exist)
+        #endif
         browser.delegate = self
+        #if os(iOS)
+        // iOS needs both: Control (Settings › Privacy › Camera) and Contents (Files and Folders); without Contents the
+        // camera is never announced (zgrimz 09-platform-notes).
+        browser.requestControlAuthorization { _ in }
+        browser.requestContentsAuthorization { _ in }
+        #endif
         browser.browsedDeviceTypeMask = ICDeviceTypeMask(rawValue: ICDeviceTypeMask.camera.rawValue | ICDeviceLocationTypeMask.local.rawValue)!
         browser.start()
     }
@@ -29,7 +38,11 @@ public final class CameraBrowser: NSObject, ICDeviceBrowserDelegate, @unchecked 
 
     /// Every camera ImageCaptureCore sees, Fujifilm or not (for "is it plugged in at all?").
     public var allDevices: [(name: String, vendor: Int)] {
-        (browser.devices ?? []).map { ($0.name ?? "camera", Int($0.usbVendorID)) }
+        #if targetEnvironment(simulator)
+        return []
+        #else
+        return (browser.devices ?? []).map { ($0.name ?? "camera", Int($0.usbVendorID)) }
+        #endif
     }
 
     /// The transport for the first Fujifilm camera, waiting up to `timeout` for it to be announced.

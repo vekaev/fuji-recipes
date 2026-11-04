@@ -26,19 +26,29 @@ Native Swift, on-device, nothing uploaded.
 ## Status
 
 Early. The `fuji` CLI and MCP server read a real X-E5 (all slots, FS1–FS3, a full settings backup) and write
-slots end to end against a simulated X-E5 that refuses what real bodies refuse; the first real write is next. The Mac app comes after, in [Photo Minimalist](https://github.com/vekaev/photo-minimalist)'s
-style ([mockup](docs/mockup/index.html); its sample photos stay local) and on the same `FujiKit`. Why this app and not another
-iPhone one: [the research brief](docs/research/brief.md).
+slots end to end against a simulated X-E5 that refuses what real bodies refuse; the first real write is next. The apps
+for Mac, iPhone and iPad run on the same `FujiKit`. Why this app and not another one: [the research brief](docs/research/brief.md).
 
-## The Mac app
+## The app (Mac, iPhone, iPad)
 
 <img src="docs/icon.png" width="64" alt="Fuji Recipes icon" align="left" />
 
-**Fuji Recipes for Mac** (early) does the same with a window, in Photo Minimalist's style: plug the camera in and it
-walks you through the USB mode with a live check, then shows C1–C7 and the dial's FS1–FS3 next to your recipes. Edit a
-slot with tick dials, load a recipe into it, and write it: a backup of every slot first, a read-back after.
-Build it with `scripts/install-mac.sh` (needs Xcode and `brew install xcodegen`); a downloadable app with
-auto-updates comes with its first release.
+**Fuji Recipes** (early) in [Photo Minimalist](https://github.com/vekaev/photo-minimalist)'s style. You pick a recipe
+by how it looks, not by its numbers, so the photos come first and the settings sit behind "Settings ›".
+
+- **Looks**: every recipe as its name, three photos (tap for the big preview), tags such as B&W or "Leica style".
+  On the Mac and a wide iPad the camera's slots sit beside it: drag a look onto a slot.
+- **Camera**: C1–C7 and the dial's FS1–FS3 with the look in each. A slot shows since when it holds that look, when
+  you last shot with it, looks to swap in, and its history, so you can put the old one back. Changes are staged and
+  written in one go after a review: a backup of every slot first, a read-back after. FS1–FS3 are read only for now.
+- **Inbox**: paste or drop Instagram / TikTok / YouTube links (many at once) or Instagram's saved-posts export.
+  Claude reads the reels on the Mac (`/recipe`, `fuji_inbox`), and you keep or skip each one here.
+- No camera yet: a step-by-step guide to the camera's USB mode, with a live connection check.
+
+Mac: `scripts/install-mac.sh` (needs Xcode and `brew install xcodegen`). iPhone / iPad: `scripts/run-ios-sim.sh`
+for the simulator, or run the `FujiRecipes-iOS` scheme on a device with a USB-C port. The library lives in
+`~/Documents/FujiRecipes`, or in iCloud Drive's "Fuji Recipes" folder so every device sees it. A downloadable Mac
+app with auto-updates comes with its first release.
 
 <br clear="left">
 

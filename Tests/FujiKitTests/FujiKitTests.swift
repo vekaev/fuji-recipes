@@ -113,3 +113,34 @@ final class SettingsFileTests: XCTestCase {
         XCTAssertNil(SettingsFile.dialSlots(d, model: "X-T5"))
     }
 }
+
+final class InboxAndHistoryTests: XCTestCase {
+    func temp() -> Library { Library(root: FileManager.default.temporaryDirectory.appendingPathComponent("fuji-test-\(UUID().uuidString)")) }
+
+    func testLinksFromPasteAndInstagramExport() throws {
+        let export = #"{"saved_saved_media":[{"title":"x","string_map_data":{"Saved on":{"href":"https:\/\/www.instagram.com\/reel\/DAbc123_x\/?igsh=abc","timestamp":1}}},{"string_map_data":{"Saved on":{"href":"https:\/\/www.instagram.com\/p\/Cxyz789\/"}}}]}"#
+        let paste = "look https://www.instagram.com/reels/DAbc123_x/ and https://www.tiktok.com/@someone/video/7412345678901234567 and https://youtu.be/AbCdEf12345"
+        let lib = temp()
+        let a = try lib.addToInbox(text: export, source: "instagram-export")
+        XCTAssertEqual(a.map { $0.url! }, ["https://www.instagram.com/reel/DAbc123_x/", "https://www.instagram.com/p/Cxyz789/"])
+        let b = try lib.addToInbox(text: paste, source: "paste")
+        XCTAssertEqual(b.count, 2)                       // the reel was already queued
+        XCTAssertEqual(lib.inbox().count, 4)
+        try lib.updateInbox(b[0].id, status: .read, recipe: "summer-chrome", note: "1 value to check")
+        XCTAssertEqual(lib.inbox().first { $0.id == b[0].id }?.status, .read)
+    }
+
+    func testSlotHistoryKeepsWhatWasThere() {
+        let lib = temp()
+        var cam = DeviceInfo(); cam.model = "X-E5"; cam.serial = "SIM0001"
+        var neg = RecipeSettings(); neg.film = "Classic Neg."; neg.normalize()
+        var chrome = RecipeSettings(); chrome.film = "Classic Chrome"; chrome.normalize()
+        lib.observe(cam, slots: [("C3", "NEG", neg)])
+        lib.recordWrite(cam, slot: "C3", name: "SUMMER", settings: chrome)
+        let h = lib.history(cam, slot: "C3")
+        XCTAssertEqual(h.map(\.name), ["SUMMER", "NEG"])
+        XCTAssertNil(h[0].to); XCTAssertNotNil(h[1].to)
+        lib.observe(cam, slots: [("C3", "SUMMER", chrome)])   // unchanged: no new entry
+        XCTAssertEqual(lib.history(cam, slot: "C3").count, 2)
+    }
+}

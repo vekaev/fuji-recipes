@@ -1,5 +1,8 @@
 import FujiKit
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// How the X-E5 picks a recipe: the film simulation dial wins; C1–C7 apply only on C (Fujifilm's manual).
 /// docs/USING-SLOTS.md says the same.
@@ -14,7 +17,7 @@ struct SlotsHelpSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(alignment: .center, spacing: 18) {
-                        DialDrawing().frame(width: 170, height: 170)
+                        DialDrawing().sheetSize(170, 170)
                         VStack(alignment: .leading, spacing: 8) {
                             (Text("The dial wins. ").bold() + Text("On a film (PROVIA … ACROS) you shoot that film; on FS1–FS3 the recipe stored there. A custom setting's film applies ") + Text("only with the dial on C").bold() + Text(" (Fujifilm's manual)."))
                                 .font(.system(size: 12)).padding(8).background(Theme.raised, in: RoundedRectangle(cornerRadius: 6))
@@ -32,7 +35,7 @@ struct SlotsHelpSheet: View {
             }
             HStack { Spacer(); PillButton(title: "Done", primary: true) { dismiss() } }.padding(.top, 12)
         }
-        .padding(20).frame(width: 560, height: 560)
+        .padding(20).sheetSize(560, 560)
     }
 
     private func heading(_ t: String) -> some View {
@@ -64,7 +67,7 @@ private struct DialDrawing: View {
                 let p = CGPoint(x: c.x + cos(a) * r * 0.74, y: c.y + sin(a) * r * 0.74)
                 if t == "C" { ctx.fill(Path(ellipseIn: CGRect(x: p.x - 13, y: p.y - 13, width: 26, height: 26)), with: .color(.primary)) }
                 ctx.draw(Text(t).font(.system(size: t.count > 3 ? 9 : 10.5, weight: t == "C" || t.hasPrefix("FS") ? .semibold : .regular))
-                    .foregroundStyle(t == "C" ? Theme.ground : Color.primary), at: p)
+                    .foregroundStyle(t == "C" ? Theme.paper : Color.primary), at: p)
             }
         }
     }
@@ -102,7 +105,7 @@ struct TroubleSheet: View {
                 .font(.system(size: 12)).foregroundStyle(.secondary).padding(.top, 10).fixedSize(horizontal: false, vertical: true)
             HStack { Spacer(); PillButton(title: "Done", primary: true) { dismiss() } }.padding(.top, 14)
         }
-        .padding(20).frame(width: 600)
+        .padding(20).sheetSize(600)
     }
 }
 
@@ -126,8 +129,10 @@ struct BackupsSheet: View {
                             HStack {
                                 Text(url.deletingPathExtension().lastPathComponent).font(.system(size: 12, design: .monospaced))
                                 Spacer()
+                                #if os(macOS)
                                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-                                    .buttonStyle(.link).font(.system(size: 12))
+                                    .buttonStyle(.plain).underline().font(.system(size: 12))
+                                #endif
                             }
                             .padding(.vertical, 6)
                             .overlay(alignment: .top) { Theme.line.frame(height: 1) }
@@ -138,6 +143,118 @@ struct BackupsSheet: View {
             }
             HStack { Spacer(); PillButton(title: "Done", primary: true) { dismiss() } }.padding(.top, 14)
         }
-        .padding(20).frame(width: 520)
+        .padding(20).sheetSize(520)
+    }
+}
+
+/// Before anything reaches the camera: each changed slot, what it holds now → what it will hold, field by field.
+/// Write = one backup of every slot, then each slot written and read back (AppModel.writeChanges).
+struct ReviewSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            InkHeadline(text: "review.", size: 32)
+            Text("A backup of every slot is saved first, and each slot is read back after writing.")
+                .font(.system(size: 13)).foregroundStyle(.secondary)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    ForEach(model.changes) { s in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("\(s.id) ← \(model.match(s.draft)?.name ?? (s.name.isEmpty ? s.draft.film : s.name.capitalized))")
+                                    .font(.system(size: 16, weight: .bold))
+                                Spacer()
+                                Button("Undo") { model.revert(s.id) }.buttonStyle(.plain).font(.system(size: 12.5))
+                            }
+                            let diffs = (s.name != s.camName ? ["Name: \(s.camName.isEmpty ? "—" : s.camName) → \(s.name)"] : []) + s.cam.differences(to: s.draft)
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(diffs, id: \.self) { d in
+                                    let parts = d.components(separatedBy: ": ")
+                                    let values = parts.dropFirst().joined(separator: ": ").components(separatedBy: " → ")
+                                    HStack {
+                                        Text(parts.first ?? d).foregroundStyle(.secondary).frame(width: 150, alignment: .leading)
+                                        Text(values.first ?? "").foregroundStyle(.secondary)
+                                        Text("→").foregroundStyle(.tertiary)
+                                        Text(values.dropFirst().joined()).fontWeight(.semibold)
+                                        Spacer()
+                                    }
+                                    .font(.system(size: 13)).padding(.vertical, 5)
+                                    .overlay(alignment: .bottom) { Theme.line.frame(height: 1) }
+                                }
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 4)
+                            .background(Theme.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                    }
+                }
+            }
+            HStack {
+                Button("Cancel") { dismiss() }.buttonStyle(.plain)
+                Spacer()
+                Pill(title: "Write \(model.changes.count) change\(model.changes.count == 1 ? "" : "s")") { Task { await model.writeChanges() } }
+                    .disabled(model.changes.isEmpty)
+            }
+        }
+        .padding(24).sheetSize(560, 600)
+        .background(Theme.paper)
+    }
+}
+
+/// A recipe's settings, tags and source, behind "Settings ›" (ADR 0001: settings are on request).
+struct RecipeSettingsSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State private var newTag = ""
+
+    var body: some View {
+        let r = model.recipe(model.settingsFor)
+        let settings = r?.settings ?? model.slot?.draft ?? RecipeSettings()
+        let title = r?.name ?? model.slot?.id ?? "Settings"
+        VStack(alignment: .leading, spacing: 14) {
+            InkHeadline(text: title.lowercased() + ".", size: 30)
+            if let r {
+                Text(model.whereabouts(r)).font(.system(size: 13)).foregroundStyle(.secondary)
+                SectionTitle(text: "Tags")
+                FlowLayout(spacing: 6) {
+                    let tags = r.tags ?? []
+                    ForEach(Array(Set(model.allTags + ["Leica style", "Warm", "Cool", "B&W", "Bright day", "Night", "Film", "Punchy", "Soft"] + tags)).sorted(), id: \.self) { t in
+                        Chip(title: t, on: tags.contains(t)) { model.setTags(r, tags.contains(t) ? tags.filter { $0 != t } : tags + [t]) }
+                    }
+                }
+                HStack {
+                    TextField("New tag", text: $newTag).textFieldStyle(.roundedBorder).frame(maxWidth: 200)
+                        .onSubmit { addTag(r) }
+                    Button("Add") { addTag(r) }.buttonStyle(.plain).disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            SectionTitle(text: "Settings")
+            ScrollView {
+                Text(settings.text).font(.system(size: 13, design: .monospaced)).frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                if let s = r?.shooting, !s.isEmpty {
+                    Text(s.sorted { $0.key < $1.key }.map { "\($0.key.replacingOccurrences(of: "_", with: " ").capitalized): \($0.value)" }.joined(separator: "\n"))
+                        .font(.system(size: 13)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+                }
+                if let src = r?.source, let url = src.url.flatMap(URL.init(string:)) {
+                    Link("\(src.creator ?? "Source"): \(url.host() ?? url.absoluteString)", destination: url).font(.system(size: 13)).padding(.top, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            HStack {
+                Button("Copy as text") { copyToPasteboard("\(title)\n\(settings.text)"); model.say("Copied as text") }.buttonStyle(.plain)
+                Spacer()
+                PillButton(title: "Done", primary: true) { dismiss() }
+            }
+        }
+        .padding(24).sheetSize(520, 640)
+        .background(Theme.paper)
+    }
+
+    private func addTag(_ r: Recipe) {
+        let t = newTag.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty else { return }
+        model.setTags(r, (r.tags ?? []) + [t]); newTag = ""
     }
 }

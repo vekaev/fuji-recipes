@@ -1,5 +1,8 @@
 import FujiKit
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// The slot editor (E): name, load a recipe, every recipe field with segmented choices and tick dials, then
 /// Revert / Write. Writing asks first, saves a backup of every slot, and reads the slot back (AppModel.write).
@@ -22,7 +25,7 @@ struct SlotEditor: View {
                     VStack(alignment: .leading, spacing: 0) {
                         group("Load")
                         Menu("A recipe from your library…") {
-                            ForEach(model.recipes, id: \.slug) { r in Button(r.name) { model.load(r) } }
+                            ForEach(model.recipes, id: \.slug) { r in Button(r.name) { model.put(r, in: s.id) } }
                         }
                         .menuStyle(.borderlessButton).font(.system(size: 12))
                         .padding(.horizontal, 6).frame(height: 24).background(Theme.raised, in: RoundedRectangle(cornerRadius: 4))
@@ -71,26 +74,12 @@ struct SlotEditor: View {
                     .padding(.horizontal, 14).padding(.bottom, 14)
                 }
 
-                if model.confirmingWrite, s.changed {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Replace \(s.id) on the \(model.info?.model ?? "camera")? A backup of every slot is saved first, and \(s.id) is read back after writing.")
-                            .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        HStack(spacing: 6) {
-                            PillButton(title: "Write", primary: true) { Task { await model.write() } }
-                            PillButton(title: "Cancel") { model.confirmingWrite = false }
-                        }
-                    }
-                    .padding(10).background(Theme.ground, in: RoundedRectangle(cornerRadius: 6))
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.line))
-                    .padding(.horizontal, 14).padding(.bottom, 10)
-                }
-
                 HStack(spacing: 8) {
                     Text(s.changed ? "Changed · not on the camera yet" : "Same as the camera")
                         .font(.system(size: 11.5)).foregroundStyle(.secondary)
                     Spacer()
-                    PillButton(title: "Revert") { model.revert() }.disabled(!s.changed).opacity(s.changed ? 1 : 0.35)
-                    PillButton(title: "Write \(s.id)", primary: true) { model.confirmingWrite = true }.disabled(!s.changed).opacity(s.changed ? 1 : 0.35)
+                    PillButton(title: "Revert") { model.revert(s.id) }.disabled(!s.changed).opacity(s.changed ? 1 : 0.35)
+                    PillButton(title: "Review", primary: true) { model.sheet = .review }.disabled(!s.changed).opacity(s.changed ? 1 : 0.35)
                 }
                 .padding(.horizontal, 14).frame(height: 44)
                 .overlay(alignment: .top) { Theme.line.frame(height: 1) }
@@ -201,10 +190,16 @@ struct FineDial: View {
         .contentShape(Rectangle())
         .gesture(DragGesture(minimumDistance: 0)
             .onChanged { g in
+                #if os(macOS)
                 if NSApp.currentEvent?.clickCount == 2 { return }
+                #endif
                 let base = start ?? value
                 if start == nil { start = value }
+                #if os(macOS)
                 let fine = NSEvent.modifierFlags.contains(.option) ? 0.1 : 1
+                #else
+                let fine = 1.0
+                #endif
                 let next = base - Double(g.translation.width / pointsPerStep) * step * fine
                 let snapped = (next / step).rounded() * step
                 let v = min(max(snapped, range.lowerBound), range.upperBound)
@@ -212,7 +207,9 @@ struct FineDial: View {
             }
             .onEnded { _ in start = nil })
         .simultaneousGesture(TapGesture(count: 2).onEnded { reset() })
+        #if os(macOS)
         .onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+        #endif
         .help("Drag left or right. Hold Option for finer. Double-click to reset.")
     }
 }

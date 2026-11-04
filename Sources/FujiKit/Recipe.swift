@@ -198,6 +198,7 @@ public struct Recipe: Codable, Equatable, Sendable {
     public var lastShot: String? = nil
     public var samples: [String]? = nil
     public var notes: String? = nil
+    public var tags: [String]? = nil                  // "Leica style", "Warm", "B&W", …
 
     public struct Source: Codable, Equatable, Sendable {
         public var kind: String                       // reel, website, exif, camera, manual
@@ -217,7 +218,7 @@ public struct Recipe: Codable, Equatable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case slug, name, status, settings, shooting, sensors, source, uncertain, shots, cameras, samples, notes
+        case slug, name, status, settings, shooting, sensors, source, uncertain, shots, cameras, samples, notes, tags
         case firstShot = "first_shot", lastShot = "last_shot"
     }
 
