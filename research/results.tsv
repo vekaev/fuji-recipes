@@ -1,2 +1,6 @@
 commit	dev	held_out	kept	description
 59d207c	27.5	-52.9	baseline	k=5 nearest photos, weights 1/(d+0.5), all features
+-	26.1	-50.5	discarded	k=8 neighbours
+-	23.8	-51.8	discarded	k=3 neighbours
+-	25.7	-52.8	discarded	uniform neighbour weights
+-	25.7	-51.3	discarded	sharper weights 1/(d+0.1)^2

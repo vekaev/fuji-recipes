@@ -11,7 +11,6 @@ extension LookStats {
         let m = tone[3]
         var v = tone.enumerated().filter { $0.offset != 3 }.map { $0.element - m } + [m * 0.5, chroma, chroma90]
         v += castShadow + castMid + castHigh
-        v += zip(hueChroma, hueShare).map { $0 * $1 }
         v += [saturatedL, grain, localContrast * 50, mono ? 30 : 0]
         return v
     }
