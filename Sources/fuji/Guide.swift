@@ -21,6 +21,17 @@ enum Guide {
     • Supported for slot writes: X-T5, X-H2, X-H2S, X100VI, X-T50, X-E5, X-S20, X-M5, X-S10, X-T30 II, GFX100S, GFX100 II, GFX100RF; X100V partly. Not: X-T3, X-T30 and older (no slot properties), X-Pro3 (fails). X-T4, X-E4: untested.
     • USB mode must be USB RAW CONV./BACKUP RESTORE; the camera's menu is locked while connected.
 
+    Connecting (docs/CONNECT.md)
+    • Once, on the camera: MENU/OK ▸ network/USB tab ▸ CONNECTION MODE ▸ USB RAW CONV./BACKUP RESTORE; same tab: USB POWER SUPPLY/COMM SETTING ▸ AUTO. Older bodies: SET UP ▸ CONNECTION SETTING ▸ PC CONNECTION MODE.
+    • Each time: camera off → USB-C data cable into the Mac → camera on. The camera's menu is locked while connected; unplug to shoot. Preview or Photos offering to import = still in card-reader mode.
+    • When anything fails, call fuji_doctor: it names the failing step and the fix.
+
+    Using the slots on the camera (docs/USING-SLOTS.md)
+    • The film simulation dial wins: on a named film or FS1–FS3 that's what you shoot. A custom setting's film applies only with the dial on C.
+    • Shoot with C3: dial on C → Q → SELECT CUSTOM SETTING (first item) → rear command dial to C3. Menu: IMAGE QUALITY SETTING ▸ SELECT CUSTOM SETTING.
+    • By hand: IMAGE QUALITY SETTING ▸ EDIT/SAVE CUSTOM SETTING ▸ C1–C7 (saves current settings; EDIT/CHECK, EDIT CUSTOM NAME, COPY, ERASE). Hold Q to jump there. AUTO UPDATE CUSTOM SETTING on DISABLE keeps recipes exact.
+    • FS1–FS3: IMAGE QUALITY SETTING ▸ FILM SIMULATION DIAL SETTING ▸ FS1–FS3, FS RECIPE on. Read over USB (fuji_slots), not written yet.
+
     Safety
     • Reads change nothing. Writes go plan → preview → user approves → apply; every apply saves a backup of all slots first, writes only what differs, then reads each slot back and reports anything refused or stored differently.
     • Restore any backup with fuji_plan_write {restore: "latest"}.

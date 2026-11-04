@@ -45,6 +45,10 @@ func cli() -> Int32 {
     switch command {
     case "--version", "version": print(version); return 0
     case "status": return runTool("fuji_camera", [:])
+    case "doctor":
+        let r = blocking { await Doctor.run() }
+        if case .success(let v) = r { print(Doctor.text(v)); return v.steps.allSatisfy(\.ok) && v.steps.count >= 5 ? 0 : 1 }
+        return 1
     case "probe":
         // Read-only: what the camera answers (GetDeviceInfo, advertised properties, a few key properties).
         let r = blocking { () async throws -> String in
@@ -109,6 +113,7 @@ func cli() -> Int32 {
         fuji \(version) — Fujifilm recipes and custom slots
           fuji mcp                          MCP server (stdio) for Claude and other agents
           fuji status                       the connected camera and its USB mode
+          fuji doctor                       step-by-step connection check with the fix for what fails
           fuji slots                        read C1–C7
           fuji recipes [text]               the library (\(tools.library.root.path))
           fuji show <recipe>                a recipe as text, to dial in by hand
@@ -166,7 +171,7 @@ func serve() {
     ProcessInfo.processInfo.endActivity(activity)   // stdin closed: the client is gone
 }
 
-let needsCamera = ["mcp", "status", "slots", "backup", "call", "probe"].contains(command)
+let needsCamera = ["mcp", "status", "slots", "backup", "call", "probe", "doctor"].contains(command)
 if needsCamera && !Cameras.shared.simulate { CameraBrowser.shared.start() }
 Thread.detachNewThread {
     if command == "mcp" { serve(); exit(0) }

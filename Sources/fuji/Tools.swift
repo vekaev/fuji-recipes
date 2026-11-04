@@ -89,6 +89,8 @@ final class Tools: @unchecked Sendable {
     let definitions: [JSON] = [
         ["name": "fuji_camera", "description": "Is a Fujifilm camera connected over USB? Model, firmware, USB mode (must be USB RAW CONV./BACKUP RESTORE to read or write slots), number of custom slots, and what to do if it isn't found.",
          "inputSchema": ["type": "object", "properties": [:]], "annotations": ro],
+        ["name": "fuji_doctor", "description": "Why can't the camera be read? Checks the connection one step at a time (USB → macOS camera → session → USB mode → slots, plus photo apps that grab cameras) and returns each step with what it saw and the fix for the first one that fails. Read-only. Use it whenever fuji_camera or fuji_slots fails, and show the user the fix in their words.",
+         "inputSchema": ["type": "object", "properties": [:]], "annotations": ro],
         ["name": "fuji_slots", "description": "Read every custom slot (C1–C7, C1–C4 on X-S20 / X-M5) from the connected camera: name, settings, a one-line summary, and which library recipe it matches. On an X-E5 also the film simulation dial's FS1–FS3 (read only, from the camera's settings file; WB shift and mono toning there are unverified). Reading changes nothing.",
          "inputSchema": ["type": "object", "properties": [:]], "annotations": ro],
         ["name": "fuji_recipes", "description": "List the recipe library (~/Documents/FujiRecipes): slug, name, status (favorite, mine = shot with it, tried, to-try, rejected), film, one-line summary, shots, source.",
@@ -146,6 +148,7 @@ final class Tools: @unchecked Sendable {
     func call(_ name: String, _ a: JSON) async throws -> Any {
         switch name {
         case "fuji_camera": return try await camera()
+        case "fuji_doctor": return Doctor.json(await Doctor.run())
         case "fuji_slots": return try await slots()
         case "fuji_recipes": return try recipes(a)
         case "fuji_recipe": return try recipe(a)
@@ -385,6 +388,6 @@ final class Tools: @unchecked Sendable {
         }
         plans[id] = nil
         return ["backup": backupURL.path, "slots": reports,
-                "note": "Turn the camera's dial or Q menu to the C slot to shoot with it (the film simulation dial overrides the slot's film unless set to C)."] as JSON
+                "note": "To shoot with a slot: unplug, turn the film simulation dial to C, press Q, and turn the rear command dial to the slot (SELECT CUSTOM SETTING). On a named film or FS1–FS3 the dial overrides the slot's film simulation."] as JSON
     }
 }

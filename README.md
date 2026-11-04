@@ -40,6 +40,9 @@ On the camera (X-E5 wording, from Fujifilm's manual): **MENU/OK ▸ network/USB 
 CONV./BACKUP RESTORE**, and **USB POWER SUPPLY/COMM SETTING ▸ AUTO** (POWER SUPPLY ON/COMM OFF blocks data). Switch
 the camera off, connect a USB-C data cable, switch it on. In the default card-reader mode the camera answers only a handful of properties (`fuji probe` shows them). The camera's menu is locked while it's connected in that mode.
 
+**New to this?** [Connect your Fujifilm](docs/CONNECT.md) (the USB mode, step by step, and `fuji doctor` when it
+doesn't work) · [Use C1–C7 and FS1–FS3](docs/USING-SLOTS.md) (the dial decides which one you shoot with).
+
 ## For agents (MCP)
 
 `fuji mcp` is an MCP server over stdio. `scripts/install.sh` adds it to Claude Code (user scope). For the Claude
@@ -54,6 +57,7 @@ Any other MCP client: run `fuji mcp`.
 | Tool | Does |
 |---|---|
 | `fuji_camera` | connected camera, firmware, USB mode, number of slots, what to fix if it isn't found |
+| `fuji_doctor` | the connection checked step by step (USB → camera → session → mode → slots) with the fix for what fails |
 | `fuji_slots` | every slot: name, settings, summary, matching library recipe |
 | `fuji_recipes`, `fuji_recipe` | the library, one recipe in full with the text to dial it in |
 | `fuji_compare` | two recipes or slots ("C3"), field by field |

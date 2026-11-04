@@ -156,6 +156,40 @@ canvas.dial { width: 100%; height: 34px; display: block; cursor: ew-resize; touc
 .steps li::before { content: "○ "; }
 .steps li.done::before { content: "● "; }
 
+/* Guided setup (no camera) */
+.setup { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 44px; max-width: 920px; margin: 0 auto; padding: 44px 32px; align-content: start; }
+.setup-wrap { overflow: auto; background: var(--ground); }
+.setup h1 { font-size: 24px; font-weight: 600; margin: 0 0 6px; letter-spacing: -.2px; text-wrap: balance; }
+.setup h2 { font-size: 10.5px; font-weight: 500; letter-spacing: .5px; text-transform: uppercase; color: var(--ink2); margin: 24px 0 8px; }
+.setup .lead { color: var(--ink2); margin: 0; max-width: 52ch; }
+.howto { margin: 0; padding-left: 20px; display: grid; gap: 10px; }
+.howto li::marker { color: var(--ink3); font-variant-numeric: tabular-nums; }
+.howto b { font-weight: 500; }
+.howto .why { display: block; color: var(--ink2); font-size: 12px; }
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-top: 4px; }
+.crumbs span { font: 11px var(--mono); background: var(--raised); border-radius: 3px; padding: 1px 6px; }
+.crumbs i { font-style: normal; color: var(--ink3); font-size: 11px; }
+.small { font-size: 12px; color: var(--ink2); margin-top: 14px; }
+.small a, .linkish { color: var(--ink); text-decoration: underline; text-decoration-color: var(--ink3); text-underline-offset: 2px; cursor: pointer; }
+.doctor { list-style: none; padding: 0; margin: 0; display: grid; gap: 2px; }
+.doctor li { display: grid; grid-template-columns: 16px 62px minmax(0, 1fr); gap: 6px; padding: 6px 8px; border-radius: 5px; font-size: 12px; align-items: baseline; }
+.doctor li.fail { background: var(--raised); }
+.doctor .st { color: var(--ink3); }
+.doctor li.ok .st, .doctor li.fail .st { color: var(--ink); }
+.doctor .nm { font-weight: 500; }
+.doctor .saw { color: var(--ink2); }
+.doctor .fix { grid-column: 3; color: var(--ink); margin-top: 2px; }
+.acts-col { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; align-items: center; }
+.cap2 { background: var(--ink); color: var(--ground); font-weight: 500; padding: 8px 18px; border-radius: 999px; font-size: 12.5px; }
+.ghost { padding: 8px 12px; border-radius: 999px; font-size: 12.5px; box-shadow: inset 0 0 0 1px var(--line); }
+.sheet table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.sheet td { border-top: 1px solid var(--line); padding: 6px 6px 6px 0; vertical-align: top; }
+.sheet td:first-child { white-space: nowrap; font-weight: 500; }
+.sheet .big { max-height: calc(100vh - 160px); overflow: auto; }
+.dial { display: grid; grid-template-columns: 170px 1fr; gap: 18px; align-items: center; margin: 6px 0 10px; }
+.dial svg { width: 170px; height: 170px; color: var(--ink); }
+.callout { background: var(--raised); border-radius: 6px; padding: 8px 10px; font-size: 12px; margin: 8px 0; }
+
 /* Sheet + toast */
 .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.25); display: none; place-items: start center; padding-top: 90px; z-index: 5; }
 .scrim.show { display: grid; }
@@ -188,11 +222,13 @@ canvas.dial { width: 100%; height: 34px; display: block; cursor: ew-resize; touc
   .edit .in { width: 100%; }
   .win { height: auto; min-height: 640px; grid-template-rows: 38px minmax(600px, 1fr); }
   .top .status { display: none; }
+  .setup { grid-template-columns: 1fr; padding: 28px 16px; gap: 20px; }
+  .dial { grid-template-columns: 1fr; }
 }
 </style>
 </head>
 <body>
-<p class="note"><span><b>Mockup</b> in Photo Minimalist's Mac style. The camera is simulated; your two recipes and their photos are real (from your X-E5 JPEGs), the rest are examples.</span>
+<p class="note"><span><b>Mockup</b> in Photo Minimalist's Mac style. The connection is simulated, but the slots are what your X-E5 held when read over USB (C1–C7 empty, FS1–FS3 your recipes); your two library recipes and photos are real, the rest are examples.</span>
 <span><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>E</kbd> edit slot · <kbd>↵</kbd> write · <kbd>Esc</kbd> close · <kbd>⌘N</kbd> add from a reel</span></p>
 
 <div class="win" id="win">
@@ -244,18 +280,17 @@ const LIB = [
     s:R({ film:"Reala Ace", grain:"Weak", cc:"Weak", r:2, b:-2, drp:"Weak", sharp:-1, nr:-4, clarity:-1 }) },
 ];
 const rec = id => LIB.find(r => r.id === id);
+// What the owner's X-E5 (fw 1.12) actually holds, read over USB on 2026-11-04: C1–C7 unused, recipes on the dial.
 const SLOTS = [
-  { key:"C1", name:"GREEN ACROS", s:clone(rec("green-acros").s) },
-  { key:"C2", name:"CLASSIC NEG", s:clone(rec("strong-classic-neg").s) },
-  { key:"C3", name:"SUMMER", s:clone(rec("summer-chrome").s) },
+  { key:"C1", name:"", s:clone(DEF) }, { key:"C2", name:"", s:clone(DEF) }, { key:"C3", name:"", s:clone(DEF) },
   { key:"C4", name:"", s:clone(DEF) }, { key:"C5", name:"", s:clone(DEF) }, { key:"C6", name:"", s:clone(DEF) }, { key:"C7", name:"", s:clone(DEF) },
-  { key:"FS1", name:"", s:clone(rec("strong-classic-neg").s), dial:true },
-  { key:"FS2", name:"", s:clone(rec("green-acros").s), dial:true },
-  { key:"FS3", name:"", s:clone(DEF), dial:true },
+  { key:"FS1", name:"", s:R({ film:"Classic Neg.", grain:"Strong", grainSize:"Large", cc:"Strong", fxb:"Strong", hi:-2, sh:-1, color:1, sharp:-2, nr:-4 }), dial:true },
+  { key:"FS2", name:"", s:R({ film:"Acros+Ye", grain:"Strong", grainSize:"Large", cc:"Strong", hi:4, sh:4, sharp:4 }), dial:true },
+  { key:"FS3", name:"", s:R({ film:"Classic Chrome", grain:"Weak", grainSize:"Large", cc:"Strong", fxb:"Strong", dr:"DR400", hi:-1.5, color:4, nr:-4 }), dial:true },
 ];
 SLOTS.forEach(x => { x.cam = clone(x.s); x.camName = x.name; });
 
-const st = { connected:false, connecting:false, step:0, tab:"library", filter:"all", mode:"list", sel:{ camera:"C1", library:"green-acros" }, editing:false, side:true, backups:[] };
+const st = { connected:false, connecting:false, dstep:0, dfail:-1, tab:"camera", filter:"all", mode:"list", sel:{ camera:"C1", library:"green-acros" }, editing:false, side:true, backups:[] };
 const $ = s => document.querySelector(s);
 
 // ---------- Helpers ----------
@@ -302,17 +337,26 @@ const ICON = {
 };
 
 // ---------- Camera connection ----------
-const STEPS = ["Found X-E5 on USB-C", "Mode: USB RAW CONV./BACKUP RESTORE", "Read C1–C7", "Saved a backup of every slot"];
-function plug() {
-  if (st.connected) { st.connected = false; st.editing = false; st.tab = "library"; render(); toast("X-E5 disconnected"); return; }
+// The same five checks as `fuji doctor`.
+const DOCTOR = [
+  { n:"USB", wait:"Waiting for a Fujifilm on USB", ok:"FUJIFILM X-E5 is on USB" },
+  { n:"Camera", wait:"macOS offers it as a camera", ok:"macOS offers it as a camera" },
+  { n:"Session", wait:"It answers", ok:"X-E5 · firmware 1.12" },
+  { n:"Mode", wait:"USB RAW CONV./BACKUP RESTORE", ok:"USB RAW CONV./BACKUP RESTORE", bad:"USB CARD READER (the default)",
+    fix:"On the camera: CONNECTION MODE › USB RAW CONV./BACKUP RESTORE. Then camera off → plug in → camera on. If Preview offers to import, it's still a card reader." },
+  { n:"Slots", wait:"C1–C7 readable", ok:"C1–C7 and FS1–FS3 read · backup saved" },
+];
+function plug(cardReader) {
+  if (st.connected) { st.connected = false; st.editing = false; st.dstep = 0; st.dfail = -1; st.tab = "camera"; render(); toast("X-E5 disconnected"); return; }
   if (st.connecting) return;
-  st.connecting = true; st.tab = "camera"; st.step = 0; render();
+  st.connecting = true; st.tab = "camera"; st.dstep = 0; st.dfail = -1; render();
   const tick = () => {
-    st.step++; render();
-    if (st.step < STEPS.length) setTimeout(tick, 520);
-    else setTimeout(() => { st.connecting = false; st.connected = true; st.backups.unshift({ when:new Date(), why:"On connect" }); render(); toast("X-E5 · 7 slots read · backup saved"); }, 420);
+    if (cardReader && st.dstep === 3) { st.dfail = 3; st.connecting = false; render(); toast("Preview offers to import photos: the camera is a card reader"); return; }
+    st.dstep++; render();
+    if (st.dstep < DOCTOR.length) setTimeout(tick, 480);
+    else setTimeout(() => { st.connecting = false; st.connected = true; st.backups.unshift({ when:new Date(), why:"On connect" }); render(); toast("X-E5 · C1–C7 and FS1–FS3 read · backup saved"); }, 380);
   };
-  setTimeout(tick, 520);
+  setTimeout(tick, 480);
 }
 
 // ---------- Render ----------
@@ -343,18 +387,44 @@ function renderTop() {
     <button onclick="plug()">${st.connected ? "Disconnect X-E5" : "Simulate plugging in the X-E5"}</button>
     <button onclick="openBackups()" ${st.backups.length ? "" : "disabled"}>Backups (${st.backups.length})…</button>
     <hr>
+    <button onclick="openTrouble()">Connection check…</button>
+    <button onclick="openSlotsHelp()">How to use C1–C7 and FS1–FS3…</button>
     <button onclick="toast('Agents: fuji mcp — Claude can read slots, save recipes and write after you approve')">Agents (MCP)…</button>`;
 }
 
 function startPage() {
-  return `<div class="start"><div>
-    <svg class="mk" viewBox="0 0 132 44" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-      <rect x="30" y="8" width="72" height="30" rx="6"/><rect x="38" y="4" width="14" height="4" rx="1.5"/><circle cx="66" cy="23" r="9"/><circle cx="66" cy="23" r="4"/>
-      <path d="M2 23h20M110 23h20" stroke-dasharray="${st.connecting ? "0" : "3 4"}"/></svg>
-    <h1>${st.connecting ? "Reading your camera" : "Plug in your Fujifilm"}</h1>
-    <p>${st.connecting ? "Nothing on it changes until you press Write." : "USB-C cable, camera on, USB Setting: RAW CONV./BACKUP RESTORE."}</p>
-    ${st.connecting ? `<ul class="steps">${STEPS.map((t, i) => `<li class="${i < st.step ? "done" : ""}">${t}</li>`).join("")}</ul>` :
-      `<button class="cap" onclick="plug()">Simulate plugging in</button><div class="or">or browse your recipes</div>`}
+  const crumbs = list => `<span class="crumbs">${list.map(t => `<span>${t}</span>`).join("<i>›</i>")}</span>`;
+  const row = (d, i) => {
+    const done = i < st.dstep, fail = i === st.dfail, cls = fail ? "fail" : done ? "ok" : "";
+    return `<li class="${cls}"><span class="st">${fail ? "✕" : done ? "✓" : st.connecting && i === st.dstep ? "…" : "○"}</span><span class="nm">${i + 1}. ${d.n}</span>
+      <span class="saw">${fail ? d.bad : done ? d.ok : d.wait}</span>${fail ? `<span class="fix">${d.fix}</span>` : ""}</li>`;
+  };
+  return `<div class="setup-wrap"><div class="setup">
+    <div>
+      <h1>Connect your Fujifilm</h1>
+      <p class="lead">Out of the box the camera connects as a card reader: the Mac sees your photos, not its settings. Set it up once, on the camera:</p>
+      <h2>Once, on the camera</h2>
+      <ol class="howto">
+        <li><b>Connection mode</b>${crumbs(["MENU/OK", "network/USB", "CONNECTION MODE", "USB RAW CONV./BACKUP RESTORE"])}<span class="why">The default, USB CARD READER, shows only your photos.</span></li>
+        <li><b>Power and data</b>${crumbs(["same tab", "USB POWER SUPPLY/COMM SETTING", "AUTO"])}<span class="why">“POWER SUPPLY ON/COMM OFF” charges but blocks data.</span></li>
+      </ol>
+      <h2>Every time</h2>
+      <ol class="howto">
+        <li>Switch the camera <b>off</b>.</li>
+        <li>Plug a USB-C <b>data</b> cable straight into the Mac.</li>
+        <li>Switch the camera <b>on</b>. Its menu locks while connected; unplug to shoot.</li>
+      </ol>
+      <p class="small">Older bodies: SET UP › CONNECTION SETTING › PC CONNECTION MODE. The setting stays, and the camera shoots normally when unplugged. <span class="linkish" onclick="openSlotsHelp()">How to shoot with C1–C7 and FS1–FS3</span></p>
+    </div>
+    <div>
+      <h2 style="margin-top:4px">Connection check</h2>
+      <ol class="doctor">${DOCTOR.map(row).join("")}</ol>
+      <div class="acts-col">
+        <button class="cap2" onclick="plug()">Simulate: plug in</button>
+        <button class="ghost" onclick="plug(true)">Simulate: still a card reader</button>
+      </div>
+      <p class="small">Stuck? <span class="linkish" onclick="openTrouble()">Troubleshooting</span> · in Terminal: <code>fuji doctor</code> · or ask Claude “is my camera connected?”</p>
+    </div>
   </div></div>`;
 }
 
@@ -377,6 +447,7 @@ function slotSide() {
     <div class="list" role="listbox">${SLOTS.filter(x => !x.dial).map(slotRow).join("")}
       <div class="heading">Film simulation dial · read only</div>${SLOTS.filter(x => x.dial).map(slotRow).join("")}</div>`;
 }
+const shootHint = x => x.dial ? `To shoot: turn the dial to ${x.key}` : `To shoot: dial on C · Q · ${x.key}`;
 function slotPane() {
   const x = SLOTS.find(s => s.key === st.sel.camera), r = matchRec(x.s), empty = isDefault(x.s) && !x.name;
   const chip = x.dial ? `<span>Set on the camera's dial</span>` :
@@ -389,12 +460,13 @@ function slotPane() {
       <button class="icon" title="Copy as text" onclick="toast('Copied ${x.key} as text')">${ICON.copy}</button>
       <button class="icon" title="Save as a recipe" onclick="toast('Saved ${x.key} to your recipes')">${ICON.save}</button>
       <button class="icon" title="Backups" onclick="openBackups()">${ICON.clock}</button>
+      <button class="icon" title="How to shoot with a slot" onclick="openSlotsHelp()" style="font-weight:600;font-size:13px">?</button>
     </div>
     <div class="stage">
-      ${r ? `<div class="photo" style="background-image:url('${photoOf(r)}');filter:${looks(r)}"></div>` : `<div class="empty-photo"><b>${x.key}</b>${empty ? "Unused slot · Provia defaults<br>Load a recipe from the editor (E)" : "No photo for these settings yet"}</div>`}
+      ${r ? `<div class="photo" style="background-image:url('${photoOf(r)}');filter:${looks(r)}"></div>` : `<div class="empty-photo"><b>${x.key}</b>${empty ? "Unused slot · Provia defaults<br>Load a recipe from the editor (E)" : "No photo for these settings yet"}<br><span class="linkish" onclick="openSlotsHelp()">${shootHint(x)}</span></div>`}
       ${r && !r.photos ? `<span class="prev">Preview · your photo with a rough look</span>` : ""}
       <div class="chip">${chip}</div>
-      ${empty ? "" : `<div class="card">${cardRows(x.s)}${r ? `<div class="src">${esc(r.source)}</div>` : ""}</div>`}
+      ${empty ? "" : `<div class="card">${cardRows(x.s)}${r ? `<div class="src">${esc(r.source)}</div>` : ""}<div class="src">${shootHint(x)}</div></div>`}
     </div>`;
 }
 
@@ -539,7 +611,7 @@ function askWrite() { if (!st.editing) { st.editing = true; render(); } $("#conf
 function writeSlot() {
   const x = SLOTS.find(s => s.key === st.sel.camera);
   x.cam = clone(x.s); x.camName = x.name; st.backups.unshift({ when:new Date(), why:`Before writing ${x.key}` });
-  render(); toast(`Wrote ${x.key} · read back: all settings match`, { label:"Undo", fn:"undoWrite('" + x.key + "')" });
+  render(); toast(`Wrote ${x.key} · read back OK · to shoot: unplug, dial on C, Q, ${x.key}`, { label:"Undo", fn:"undoWrite('" + x.key + "')" });
 }
 function undoWrite(k) { toast(`Restored ${k} from the backup`); }
 function putIn(id, key) {
@@ -576,6 +648,41 @@ function showFound() {
       <dt>White balance</dt><dd>Daylight, R +2 B −4 <span class="chk" title="Read from one frame only">check</span></dd><dt>Tone</dt><dd>DR200 · H −1 · S +1</dd>
       <dt>Color</dt><dd>+2</dd><dt>Sharp · NR</dt><dd>−1 · −4</dd><dt>Clarity</dt><dd>0 <span class="chk" title="Not in the reel: camera default">default</span></dd><dt>ISO · EV</dt><dd>Auto ≤ 6400 · +1/3 to +2/3</dd></dl></div>
     <div class="acts"><button class="btn" onclick="closeSheet()">Discard</button><button class="btn primary" onclick="closeSheet();go('library');setFilter('try');selectRecipe('summer-chrome');toast('Added “Summer Chrome” to To try')">Add to To try</button></div>`);
+}
+function openTrouble() {
+  $("#menu").classList.remove("show");
+  const rows = [
+    ["1 USB", "The Mac doesn't see a Fujifilm", "Camera on? Try another cable: charge-only cables look the same. USB POWER SUPPLY/COMM SETTING › AUTO. Plug straight into the Mac."],
+    ["2 Camera", "On USB, but not offered as a camera", "Unplug, wait 3 s, plug in. Quit photo apps. Does Image Capture list it?"],
+    ["3 Session", "Listed, but doesn't answer", "Another app holds it: Preview, Photos, Image Capture, X RAW Studio, Fujifilm Tether, Lightroom. Quit them; camera off → on."],
+    ["4 Mode", "Answers as a card reader / webcam", "CONNECTION MODE › USB RAW CONV./BACKUP RESTORE, then camera off → plug in → on. The mode is picked when the cable goes in."],
+    ["5 Slots", "Right mode, no slots", "X-T3, X-T30 and older bodies don't expose them. Otherwise: camera off → on."],
+  ];
+  sheet(`<h3>Connection check</h3><p class="sub">The app checks these five steps in order (same as <code>fuji doctor</code> in Terminal) and shows the fix for the first one that fails.</p>
+    <div class="big"><table>${rows.map(r => `<tr><td>${r[0]}</td><td style="color:var(--ink2);width:34%">${r[1]}</td><td>${r[2]}</td></tr>`).join("")}</table>
+    <p class="small">Seen on a real X-E5: as a card reader it still answers, but offers only 5 settings and refuses the slots; Preview offers to import. After switching the mode and reconnecting with the camera off: 61 settings, C1–C7 readable.</p></div>
+    <div class="acts"><button class="btn primary" onclick="closeSheet()">Done</button></div>`);
+}
+function openSlotsHelp() {
+  $("#menu").classList.remove("show");
+  const pos = ["PROVIA", "Velvia", "ASTIA", "CC", "REALA", "ACROS", "FS1", "FS2", "FS3", "C"];
+  const dial = pos.map((t, i) => {
+    const a = (i / pos.length) * 2 * Math.PI - Math.PI / 2, x = 85 + Math.cos(a) * 62, y = 85 + Math.sin(a) * 62, on = t === "C";
+    return `<g>${on ? `<circle cx="${x}" cy="${y}" r="13" fill="currentColor"/>` : ""}<text x="${x}" y="${y + 3.5}" text-anchor="middle" font-size="${t.length > 3 ? 9 : 10.5}" font-weight="${on || t.startsWith("FS") ? 600 : 400}" fill="${on ? "var(--ground)" : "currentColor"}" font-family="-apple-system, sans-serif">${t}</text></g>`;
+  }).join("");
+  sheet(`<h3>Shoot with C1–C7 and FS1–FS3</h3><p class="sub">Your X-E5 keeps recipes in ten places. The film simulation dial decides which one you shoot with.</p>
+    <div class="big">
+    <div class="dial"><svg viewBox="0 0 170 170" aria-label="Film simulation dial"><circle cx="85" cy="85" r="80" fill="none" stroke="currentColor" stroke-opacity=".15"/><circle cx="85" cy="85" r="44" fill="none" stroke="currentColor" stroke-opacity=".15"/>${dial}<path d="M85 2v8" stroke="currentColor" stroke-width="2"/></svg>
+      <div><div class="callout"><b>The dial wins.</b> On a film (PROVIA … ACROS) you shoot that film; on FS1–FS3 the recipe stored there. A custom setting's film applies <b>only with the dial on C</b> (Fujifilm's manual).</div>
+      <ol class="howto" style="font-size:12.5px"><li>Turn the dial to <b>C</b>.</li><li>Press <b>Q</b>: the first item is SELECT CUSTOM SETTING.</li><li>Turn the rear command dial to <b>C1 … C7</b>.</li></ol></div></div>
+    <h2 style="font-size:10.5px;letter-spacing:.5px;color:var(--ink2);text-transform:uppercase;font-weight:500;margin:14px 0 6px">Put a recipe in a slot</h2>
+    <p class="small" style="margin:0"><b>From the Mac:</b> select a recipe, “Put in C3”, check the preview, Write. A backup is saved first and the slot is read back.</p>
+    <p class="small"><b>On the camera:</b> set the recipe's settings, then MENU/OK › IMAGE QUALITY SETTING › EDIT/SAVE CUSTOM SETTING › C3 › OK. Same screen: EDIT/CHECK, EDIT CUSTOM NAME, COPY, ERASE. Hold Q to jump there. Keep AUTO UPDATE CUSTOM SETTING on DISABLE so recipes stay exact.</p>
+    <h2 style="font-size:10.5px;letter-spacing:.5px;color:var(--ink2);text-transform:uppercase;font-weight:500;margin:14px 0 6px">FS1–FS3</h2>
+    <p class="small" style="margin:0">IMAGE QUALITY SETTING › FILM SIMULATION DIAL SETTING › FS1–FS3: pick the film and turn FS RECIPE on. Then the dial position <i>is</i> the recipe. This app reads them; writing them comes later.</p>
+    <p class="small"><b>Which to use:</b> three favourites you switch all the time → FS1–FS3. More, or a set per trip → C1–C7 with the dial on C, swapped as a kit from the Mac. ISO and exposure aren't stored in either.</p>
+    </div>
+    <div class="acts"><button class="btn primary" onclick="closeSheet()">Done</button></div>`);
 }
 function openBackups() {
   $("#menu").classList.remove("show");
