@@ -10,7 +10,7 @@ extension LookStats {
     var features: [Double] {
         let m = tone[3]
         var v = tone.enumerated().filter { ![0, 3, 6].contains($0.offset) }.map { $0.element - m } + [m * 0.5, chroma, chroma90]
-        v += castMid + castHigh
+        v += castMid + castHigh + castMid + castHigh
         v += [saturatedL, grain, localContrast * 50, mono ? 30 : 0]
         return v
     }
