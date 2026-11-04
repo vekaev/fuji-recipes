@@ -80,7 +80,7 @@ Shared with `/recipe` and `fuji mcp`: field names in skills/fuji-recipes/referen
 | Feature | Mac | iPhone / iPad | MCP |
 |---|---|---|---|
 | Looks (name, scenes/photos, tags, filter chips, settings behind ›) | ✓ | ✓ (iPad regular = Mac layout) | `fuji_recipes`, `fuji_recipe` |
-| Edit a recipe: name, description, status, tags, creator + link (slug and photos stay; settings read only) | ✓ Edit › or click the name, right-click "Edit…"; Save / Cancel (↵ / Esc) | ✓ Edit › or tap the name | `fuji_edit_recipe`, `fuji_tag` |
+| Edit a recipe: name, description, status, tags, creator + link (slug and photos stay; settings read only) | ✓ click anywhere on the card (photos open the preview), Edit ›, right-click "Edit…"; Save / Cancel | ✓ tap anywhere on the card (photos open the preview), Edit › | `fuji_edit_recipe`, `fuji_tag` |
 | Photo tiles: fixed size from width + ratio, every photo fills (portrait cropped; the preview shows it whole) | ✓ | ✓ | — |
 | Fast photos: thumbnails decoded in parallel, kept as small JPEGs in Caches/thumbs (keyed by path, size, date, pixels) | ✓ | ✓ | — |
 | Modals: click outside or Esc closes (the recipe page keeps its edits; Cancel discards) | ✓ own overlay, not a system sheet | ✓ system sheet, swipe down keeps edits | — |

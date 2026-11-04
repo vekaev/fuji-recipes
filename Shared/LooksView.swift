@@ -67,7 +67,7 @@ struct LookCard: View {
             } else {
                 VStack(alignment: .leading, spacing: 9) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text(recipe.name).font(.system(size: 19, weight: .bold)).tracking(-0.3).onTapGesture { edit() }.pointer()
+                        Text(recipe.name).font(.system(size: 19, weight: .bold)).tracking(-0.3)
                         Spacer()
                         favorite
                     }
@@ -86,6 +86,10 @@ struct LookCard: View {
         .padding(12)
         .background(Theme.card, in: RoundedRectangle(cornerRadius: regular ? 16 : 20, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: regular ? 16 : 20, style: .continuous).stroke(Theme.line, lineWidth: regular ? 1 : 0))
+        // The whole card opens the recipe page; photos (preview), the heart, Edit and Put in… keep their own taps.
+        .contentShape(RoundedRectangle(cornerRadius: regular ? 16 : 20, style: .continuous))
+        .onTapGesture { edit() }
+        .pointer()
         .draggable(recipe.slug) {
             HStack(spacing: 8) {
                 PhotoTile(path: photos.first, maxPixel: 160).frame(width: 54, height: 36).clipShape(RoundedRectangle(cornerRadius: 5))
@@ -107,7 +111,7 @@ struct LookCard: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 Text(recipe.name).font(.system(size: 19, weight: .bold)).tracking(-0.3).lineLimit(2)
-                    .onTapGesture { edit() }.pointer().help("Edit name, description and tags")
+                    .help("Edit name, description and tags")
                 Spacer(minLength: 4)
                 favorite
             }
