@@ -43,7 +43,20 @@ func runTool(_ name: String, _ arguments: JSON) -> Int32 {
 
 func cli() -> Int32 {
     switch command {
-    case "--version", "version": print(version); return 0
+    case "--version", "version":
+        guard rest.contains("--check") else { print(version); return 0 }
+        let latest = Shell.run("/usr/bin/curl", ["-fsSL", "-m", "10", "https://api.github.com/repos/vekaev/fuji-recipes/releases/latest"])
+        let tag = (try? JSONSerialization.jsonObject(with: Data(latest.utf8)) as? JSON)?["tag_name"] as? String
+        guard let tag else { print(latest.contains("Not Found") ? "\(version) (no release published yet)" : "\(version) (couldn't reach GitHub)"); return 1 }
+        let newest = String(tag.dropFirst())
+        print(newest.compare(version, options: .numeric) == .orderedDescending ? "\(version) → \(newest) available: fuji update" : "\(version) is the latest")
+        return 0
+    case "update":
+        // Same as the one-line install: downloads the latest release, checks its SHA-256, replaces this binary.
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = ["-c", "curl -fsSL https://raw.githubusercontent.com/vekaev/fuji-recipes/main/scripts/install.sh | sh"]
+        do { try p.run(); p.waitUntilExit(); return p.terminationStatus } catch { return fail(error) }
     case "status": return runTool("fuji_camera", [:])
     case "doctor":
         let r = blocking { await Doctor.run() }
@@ -120,6 +133,7 @@ func cli() -> Int32 {
           fuji backup                       save every slot to the library's backups
           fuji mine [folders…] [--min N] [--write]   recipes you shot with, from your JPEGs' EXIF
           fuji index                        rebuild library.md
+          fuji version [--check] · fuji update   the installed version, the latest release, update to it
           fuji call <tool> '<json>'         any MCP tool (fuji tools lists them)
           --simulate                        use a simulated X-E5
         """)

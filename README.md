@@ -10,26 +10,44 @@ EXIF), recipes from reels and websites, and kits of seven for a trip. Ask Claude
 Native Swift, on-device, nothing uploaded.
 
 [![Swift](https://img.shields.io/badge/Swift-native-F05138?style=flat-square&logo=swift&logoColor=white)](https://swift.org)
-[![macOS](https://img.shields.io/badge/macOS%2014%2B-native-000000?style=flat-square&logo=apple&logoColor=white)](#get-started)
+[![macOS](https://img.shields.io/badge/macOS%2014%2B-native-000000?style=flat-square&logo=apple&logoColor=white)](#install)
 [![MCP](https://img.shields.io/badge/MCP-for%20agents-3a3a3a?style=flat-square)](#for-agents-mcp)
 [![License: MIT](https://img.shields.io/badge/license-MIT-3a3a3a?style=flat-square)](LICENSE)
 [![Status: early](https://img.shields.io/badge/status-early-d69e2e?style=flat-square)](#status)
+
+<br>
+
+[![Download for macOS](https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/vekaev/fuji-recipes/releases/latest)
+
+<sub>One line in Terminal (below) installs the <code>fuji</code> CLI, its MCP server for Claude, and the /recipe skill. Apple Silicon + Intel, macOS 14+.</sub>
 
 </div>
 
 ## Status
 
-Early. The `fuji` CLI and MCP server work end to end against a simulated X-E5, which refuses what real bodies
-refuse; real-camera testing is next. The Mac app comes after, in [Photo Minimalist](https://github.com/vekaev/photo-minimalist)'s
+Early. The `fuji` CLI and MCP server read a real X-E5 (all slots, FS1–FS3, a full settings backup) and write
+slots end to end against a simulated X-E5 that refuses what real bodies refuse; the first real write is next. The Mac app comes after, in [Photo Minimalist](https://github.com/vekaev/photo-minimalist)'s
 style ([mockup](docs/mockup/index.html); its sample photos stay local) and on the same `FujiKit`. Why this app and not another
 iPhone one: [the research brief](docs/research/brief.md).
+
+## Install
+
+**One line in Terminal** (no security prompt):
+
+    curl -fsSL https://raw.githubusercontent.com/vekaev/fuji-recipes/main/scripts/install.sh | sh
+
+It downloads the latest release, checks its SHA-256, installs `fuji` into
+`~/Library/Application Support/FujiRecipes/bin` (linked as `~/.local/bin/fuji`), adds the `/recipe` skill, and
+registers the MCP server with Claude Code and the Claude desktop app (quit and reopen Claude once). Run it again,
+or `fuji update`, to update; `fuji version --check` says whether there's a newer release. Optional:
+`brew install exiftool` for recipes from your photos.
+
+From a checkout instead: `scripts/dev-install.sh` builds, signs and installs the same way.
 
 ## Get started
 
 ```sh
-git clone https://github.com/vekaev/fuji-recipes && cd fuji-recipes
-scripts/install.sh      # builds, installs to ~/Library/Application Support/FujiRecipes/bin/fuji,
-                        # links ~/.local/bin/fuji and the /recipe skill, registers the MCP server with Claude Code
+fuji doctor             # is the camera connected, step by step
 fuji status             # is the camera there, and in the right USB mode?
 fuji slots              # what's in C1–C7
 fuji mine               # the recipes you actually shot with (your JPEGs' EXIF; --write files them)
@@ -51,8 +69,8 @@ doesn't work) · [Use C1–C7 and FS1–FS3](docs/USING-SLOTS.md) (the dial deci
 
 ## For agents (MCP)
 
-`fuji mcp` is an MCP server over stdio. `scripts/install.sh` adds it to Claude Code (user scope). For the Claude
-desktop app add this to `~/Library/Application Support/Claude/claude_desktop_config.json` and restart Claude:
+`fuji mcp` is an MCP server over stdio. The installer adds it to Claude Code (user scope) and the Claude desktop
+app. To add it by hand to the desktop app, put this in `~/Library/Application Support/Claude/claude_desktop_config.json` and restart Claude:
 
 ```json
 { "mcpServers": { "fuji": { "command": "/Users/<you>/Library/Application Support/FujiRecipes/bin/fuji", "args": ["mcp"] } } }
@@ -81,7 +99,7 @@ Every tool also runs from the shell: `fuji call <tool> '<json>'`, `fuji tools` l
 `skills/fuji-recipes` is an agent skill (Claude Code, Codex): give it an Instagram reel, TikTok or YouTube link,
 screenshots or a caption, and it reads the recipe from the frames, caption, comments and speech. It shows you
 every value with where it came from, marks the ones to check, credits the creator and saves the recipe through
-`fuji`. `scripts/install.sh` links it; `/recipe mine` files the recipes you shot with.
+`fuji`. The installer links it; `/recipe mine` files the recipes you shot with.
 
 ## The library
 
@@ -119,3 +137,11 @@ and on. You decide.
 Protocol facts from [zgrimz/fujifilm-ptp-reference](https://github.com/zgrimz/fujifilm-ptp-reference) (CC BY 4.0),
 [ILFforever/fujifilm-ptp-recipes](https://github.com/ILFforever/fujifilm-ptp-recipes), FilmKit and libfuji (MIT).
 Thank you. MIT licence.
+
+## Releasing
+
+`scripts/release.sh X.Y.Z [notes.md]`: tests, a universal build (Apple Silicon + Intel), signs, packs
+`fuji-macos.tar.gz` (binary + skill) with its SHA-256, commits "Release X.Y.Z", tags, pushes and creates the GitHub
+release. `--local` only builds into `dist/` for testing the installer (`FUJI_BASE_URL=…`). Never replace an asset on
+an existing release (installers check its checksum); a fix is a new patch release. The Mac app will add a DMG and
+Sparkle auto-update here, like Photo Minimalist.

@@ -23,8 +23,8 @@ FujiRecipes/
 - Recipe files follow [schema.md](references/schema.md) exactly: the app and the `fuji` MCP server read the
   same folder.
 - **Write recipes through `fuji`**, not by hand: the `fuji_save_recipe` MCP tool when it's available, else
-  `fuji call save_recipe '<json>'` (`~/.local/bin/fuji`, installed by this repo's
-  `scripts/install.sh`). It checks every value against what the camera accepts, refuses a duplicate of another
+  `fuji call save_recipe '<json>'` (`~/.local/bin/fuji`, from the one-line installer in
+  github.com/vekaev/fuji-recipes). It checks every value against what the camera accepts, refuses a duplicate of another
   recipe's settings (naming it), fills `date_added` and rebuilds `library.md`. A refusal names the field; fix the
   value, don't loosen the check. After editing a file by hand, run `fuji index`.
 - **No duplicates.** Before adding, compare `settings` with every existing file. Same settings → add the

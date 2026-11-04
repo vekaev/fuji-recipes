@@ -79,7 +79,7 @@ Then `fuji slots` lists C1–C7 and FS1–FS3. `fuji status` is the one-line ver
 
 The `fuji` MCP server is what lets Claude talk to the camera and your recipe library.
 
-- **Claude Code:** `scripts/install.sh` registers it. Check with `claude mcp list`: you should see
+- **Claude Code:** the installer (`curl … | sh`, see the README) registers it. Check with `claude mcp list`: you should see
   `fuji: … fuji mcp - ✔ Connected`. New sessions pick it up.
 - **Claude desktop app:** it's in `~/Library/Application Support/Claude/claude_desktop_config.json` under
   `mcpServers.fuji` (command `…/FujiRecipes/bin/fuji`, args `["mcp"]`). **Quit and reopen Claude** after adding it.
