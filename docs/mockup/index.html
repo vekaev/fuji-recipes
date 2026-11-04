@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fuji Recipe Slots</title>
+<style>
+:root {
+  /* Photo Minimalist's Mac theme (App/Support.swift Theme): ground, panel, raised, 9% hairlines; primary is the only accent.
+     Layout: 38 pt top bar with square tabs (the camera is a tab, like a memory card) · sidebar list · photo pane · 280 pt editor with tick dials. */
+  --ground: #ffffff;
+  --panel: #f7f7f5;
+  --raised: #ececec;
+  --ink: rgba(0, 0, 0, .86);
+  --ink2: rgba(0, 0, 0, .5);
+  --ink3: rgba(0, 0, 0, .26);
+  --line: rgba(0, 0, 0, .09);
+  --stage: #f2f2f0;
+  --bg: #e9e9e6;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #191919; --panel: #202020; --raised: #2e2e2e; --ink: rgba(255,255,255,.88); --ink2: rgba(255,255,255,.55);
+    --ink3: rgba(255,255,255,.28); --line: rgba(255,255,255,.09); --stage: #141414; --bg: #0d0d0d; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #191919; --panel: #202020; --raised: #2e2e2e; --ink: rgba(255,255,255,.88); --ink2: rgba(255,255,255,.55);
+  --ink3: rgba(255,255,255,.28); --line: rgba(255,255,255,.09); --stage: #141414; --bg: #0d0d0d; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 13px/1.4 var(--font); -webkit-font-smoothing: antialiased; padding: 18px 16px; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: default; background: none; border: 0; padding: 0; }
+:focus-visible { outline: 2px solid var(--ink2); outline-offset: 1px; border-radius: 3px; }
+.num { font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+.note { max-width: 1240px; margin: 0 auto 10px; color: var(--ink2); font-size: 12px; display: flex; gap: 12px; flex-wrap: wrap; justify-content: space-between; }
+.note kbd { font: 11px var(--mono); border: 1px solid var(--line); background: var(--ground); border-radius: 3px; padding: 0 4px; }
+
+.win { max-width: 1240px; margin: 0 auto; height: min(800px, calc(100% - 30px)); min-height: 600px; background: var(--ground);
+  border-radius: 10px; overflow: hidden; display: grid; grid-template-rows: 38px 1fr; box-shadow: 0 0 0 1px var(--line), 0 24px 60px -30px rgba(0,0,0,.45); }
+
+/* Top bar */
+.top { background: var(--panel); border-bottom: 1px solid var(--line); display: flex; align-items: center; padding: 0 10px 0 14px; gap: 4px; min-width: 0; }
+.lights { display: flex; gap: 8px; margin-right: 12px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: var(--raised); box-shadow: inset 0 0 0 .5px var(--line); }
+.icon { width: 28px; height: 26px; display: grid; place-items: center; border-radius: 4px; color: var(--ink2); }
+.icon:hover { background: var(--raised); color: var(--ink); }
+.icon svg { width: 15px; height: 15px; }
+.vsep { width: 1px; height: 16px; background: var(--line); margin: 0 8px; }
+.tab { height: 26px; padding: 0 10px; border-radius: 3px; font-size: 12px; color: var(--ink2); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.tab[aria-selected="true"] { background: var(--raised); color: var(--ink); font-weight: 500; }
+.tab .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .8; }
+.tab .dot.off { opacity: .25; }
+.tabsep { width: 1px; height: 14px; background: var(--line); }
+.spacer { flex: 1; }
+.status { font-size: 12px; color: var(--ink2); padding-right: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Body */
+.body { display: grid; grid-template-columns: 320px 1fr auto; min-height: 0; }
+.body.full { grid-template-columns: 1fr; }
+.side { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.head { padding: 0 6px 0 16px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid var(--line); }
+.ftab { font-size: 12.5px; color: var(--ink2); padding: 7px 0; position: relative; white-space: nowrap; }
+.ftab .n { color: var(--ink3); margin-left: 3px; }
+.ftab[aria-selected="true"] { color: var(--ink); font-weight: 600; }
+.ftab[aria-selected="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1.5px; background: var(--ink); }
+.views { display: flex; margin-left: auto; }
+.views button { width: 20px; height: 18px; display: grid; place-items: center; border-radius: 3px; color: var(--ink3); }
+.views button[aria-pressed="true"] { background: var(--raised); color: var(--ink); }
+.views svg { width: 11px; height: 11px; }
+.list { overflow: auto; padding: 6px; flex: 1; }
+.heading { font-size: 10.5px; font-weight: 500; letter-spacing: .5px; color: var(--ink2); padding: 10px 8px 4px; text-transform: uppercase; }
+.row { display: flex; gap: 10px; padding: 6px; border-radius: 6px; width: 100%; text-align: left; align-items: center; }
+.row[aria-selected="true"] { background: var(--raised); }
+.thumb { width: 58px; height: 40px; border-radius: 3px; background: var(--raised) center/cover; flex: none; position: relative; display: grid; place-items: center; font: 600 10px var(--mono); color: var(--ink3); }
+.thumb .slot { position: absolute; left: 3px; top: 3px; font: 600 9px var(--mono); color: #fff; background: rgba(0,0,0,.55); border-radius: 2px; padding: 0 3px; }
+.row .t { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.row .name { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; gap: 6px; align-items: center; }
+.row .cap { font-size: 11px; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .cap.on { color: var(--ink); }
+.row .info { font: 10.5px var(--mono); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mark { width: 5px; height: 5px; border-radius: 50%; background: var(--ink); flex: none; }
+.heart { width: 11px; height: 11px; flex: none; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 0; overflow-x: hidden; align-content: start; }
+.tile { width: 100%; aspect-ratio: 1; background: var(--raised) center/cover; position: relative; outline-offset: -2px; }
+.tile[aria-selected="true"] { outline: 2px solid var(--ground); box-shadow: inset 0 0 0 3px var(--ink); }
+.pill { position: absolute; top: 5px; right: 5px; font: 600 10px var(--font); padding: 1px 6px; border-radius: 4px; background: rgba(0,0,0,.6); color: #fff; }
+.pill.light { background: rgba(255,255,255,.92); color: #111; }
+
+/* Photo pane */
+.pane { display: grid; grid-template-rows: 38px 1fr; min-width: 0; min-height: 0; background: var(--ground); }
+.bar { display: flex; align-items: center; gap: 4px; padding: 0 8px 0 16px; border-bottom: 1px solid var(--line); min-width: 0; }
+.bar .title { font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar .sub { font-size: 12px; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: 8px; }
+.icon[aria-pressed="true"] { background: var(--raised); color: var(--ink); }
+.stage { position: relative; background: var(--stage); display: grid; place-items: center; overflow: hidden; min-height: 0; }
+.photo { width: calc(100% - 64px); height: calc(100% - 64px); background: center/contain no-repeat; }
+.empty-photo { color: var(--ink3); font-size: 12px; text-align: center; display: grid; gap: 6px; place-items: center; }
+.empty-photo b { font: 600 34px var(--mono); color: var(--ink3); }
+.chip { position: absolute; top: 18px; right: 18px; display: flex; align-items: center; gap: 8px; background: rgba(28,28,28,.82); color: #fff; font-size: 12px; padding: 5px 10px; border-radius: 6px; backdrop-filter: blur(8px); }
+.chip button { color: #fff; font-weight: 600; }
+.chip .sep { opacity: .4; }
+.card { position: absolute; left: 18px; bottom: 18px; background: rgba(28,28,28,.82); color: #fff; border-radius: 8px; padding: 10px 12px; font-size: 11.5px; line-height: 1.55; backdrop-filter: blur(8px); max-width: 300px; }
+.card .k { opacity: .55; display: inline-block; min-width: 104px; }
+.card .src { opacity: .6; margin-top: 4px; }
+.prev { position: absolute; left: 18px; top: 18px; font-size: 11px; color: var(--ink2); background: var(--ground); border-radius: 4px; padding: 2px 6px; box-shadow: 0 0 0 1px var(--line); }
+
+/* Editor sidebar */
+.edit { width: 0; overflow: hidden; border-left: 1px solid transparent; background: var(--panel); transition: width .18s; }
+.edit.open { width: 280px; border-left-color: var(--line); }
+.edit .in { width: 280px; height: 100%; display: flex; flex-direction: column; }
+.edit .scroll { overflow: auto; padding: 4px 14px 14px; flex: 1; }
+.edit .nm { display: flex; gap: 6px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.edit .nm input { flex: 1; min-width: 0; border: 0; background: none; font: 600 12.5px var(--font); letter-spacing: .3px; padding: 3px 4px; border-radius: 3px; }
+.edit .nm input:hover, .edit .nm input:focus { background: var(--raised); outline: none; }
+.edit .load { width: 100%; border: 0; background: var(--raised); border-radius: 4px; padding: 4px 6px; font-size: 12px; color: var(--ink2); }
+.grp { font-size: 10.5px; font-weight: 500; letter-spacing: .5px; color: var(--ink2); margin: 14px 0 2px; text-transform: uppercase; }
+.f { padding: 5px 0; }
+.f .lab { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink2); margin-bottom: 3px; }
+.f .lab b { font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
+.f.changed .lab span::after { content: ""; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--ink); margin-left: 6px; vertical-align: 1px; }
+.f.off { opacity: .35; pointer-events: none; }
+.seg { display: flex; gap: 2px; }
+.seg button { flex: 1; font-size: 11.5px; color: var(--ink2); padding: 3px 0; border-radius: 3px; }
+.seg button[aria-pressed="true"] { background: var(--raised); color: var(--ink); font-weight: 500; }
+.seg button:hover { color: var(--ink); }
+.f select { width: 100%; border: 0; background: var(--raised); border-radius: 4px; padding: 4px 6px; font-size: 12px; }
+canvas.dial { width: 100%; height: 34px; display: block; cursor: ew-resize; touch-action: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent); mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent); }
+.hint { font-size: 11px; color: var(--ink3); margin-top: 10px; }
+.foot { border-top: 1px solid var(--line); padding: 10px 14px; display: flex; gap: 8px; align-items: center; }
+.foot .sub { font-size: 11.5px; color: var(--ink2); flex: 1; }
+.btn { font-size: 12px; padding: 4px 10px; border-radius: 5px; background: var(--raised); }
+.btn.primary { background: var(--ink); color: var(--ground); font-weight: 500; }
+.btn:disabled { opacity: .35; }
+.confirm { margin: 0 14px 10px; background: var(--ground); border-radius: 6px; box-shadow: 0 0 0 1px var(--line); padding: 10px; font-size: 12px; display: none; }
+.confirm.show { display: block; }
+.confirm p { margin: 0 0 8px; color: var(--ink2); }
+
+/* Start page (no camera) */
+.start { display: grid; place-items: center; text-align: center; background: var(--ground); }
+.start .mk { width: 132px; height: 44px; margin: 0 auto 22px; color: var(--ink); }
+.start h1 { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -.2px; }
+.start p { margin: 6px 0 0; color: var(--ink2); }
+.start .cap { display: inline-block; margin-top: 22px; background: var(--ink); color: var(--ground); font-weight: 500; padding: 10px 22px; border-radius: 999px; }
+.start .or { font-size: 12px; color: var(--ink3); margin-top: 12px; }
+.steps { list-style: none; margin: 18px auto 0; padding: 0; display: grid; gap: 4px; text-align: left; font-size: 12px; color: var(--ink3); width: max-content; }
+.steps li.done { color: var(--ink); }
+.steps li::before { content: "○ "; }
+.steps li.done::before { content: "● "; }
+
+/* Sheet + toast */
+.scrim { position: fixed; inset: 0; background: rgba(0,0,0,.25); display: none; place-items: start center; padding-top: 90px; z-index: 5; }
+.scrim.show { display: grid; }
+.sheet { width: min(560px, calc(100vw - 32px)); background: var(--ground); border-radius: 10px; box-shadow: 0 0 0 1px var(--line), 0 30px 80px -20px rgba(0,0,0,.5); padding: 18px 20px; }
+.sheet h3 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+.sheet .sub { color: var(--ink2); font-size: 12px; margin: 0 0 12px; }
+.sheet input { width: 100%; border: 0; background: var(--raised); border-radius: 5px; padding: 6px 8px; font: 12px var(--mono); }
+.sheet .acts { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+.found { display: grid; grid-template-columns: 120px 1fr; gap: 14px; margin-top: 14px; }
+.found .frame { aspect-ratio: 9/16; border-radius: 6px; background: #1b1b1b; color: #ddd; font: 10px/1.6 var(--mono); padding: 10px 8px; overflow: hidden; }
+.kv { display: grid; grid-template-columns: 112px 1fr; gap: 3px 10px; font-size: 12px; margin: 0; }
+.kv dt { color: var(--ink2); }
+.kv dd { margin: 0; }
+.chk { font-size: 10.5px; color: var(--ink2); border-bottom: 1px dotted var(--ink3); margin-left: 4px; }
+.prog { font-size: 12px; color: var(--ink2); display: grid; gap: 3px; margin-top: 12px; }
+.toast { position: fixed; left: 50%; bottom: 34px; transform: translateX(-50%); background: rgba(28,28,28,.9); color: #fff; padding: 7px 14px; border-radius: 8px; font-size: 12px; opacity: 0; pointer-events: none; transition: opacity .2s; display: flex; gap: 10px; }
+.toast.show { opacity: 1; pointer-events: auto; }
+.toast button { color: #fff; font-weight: 600; }
+.menu { position: absolute; right: 10px; top: 34px; background: var(--ground); border-radius: 7px; box-shadow: 0 0 0 1px var(--line), 0 12px 30px -10px rgba(0,0,0,.35); padding: 4px; display: none; z-index: 4; min-width: 220px; }
+.menu.show { display: block; }
+.menu button { display: flex; justify-content: space-between; width: 100%; padding: 4px 10px; border-radius: 4px; font-size: 12.5px; text-align: left; }
+.menu button:hover { background: var(--raised); }
+.menu kbd { font: 11px var(--font); color: var(--ink3); }
+.menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 6px; }
+
+@media (max-width: 860px) {
+  .body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .side { max-height: 280px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .edit.open { position: fixed; inset: 0; width: auto; z-index: 6; }
+  .edit .in { width: 100%; }
+  .win { height: auto; min-height: 640px; grid-template-rows: 38px minmax(600px, 1fr); }
+  .top .status { display: none; }
+}
+</style>
+</head>
+<body>
+<p class="note"><span><b>Mockup</b> in Photo Minimalist's Mac style. The camera is simulated; your two recipes and their photos are real (from your X-E5 JPEGs), the rest are examples.</span>
+<span><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>E</kbd> edit slot · <kbd>↵</kbd> write · <kbd>Esc</kbd> close · <kbd>⌘N</kbd> add from a reel</span></p>
+
+<div class="win" id="win">
+  <header class="top">
+    <div class="lights" aria-hidden="true"><i></i><i></i><i></i></div>
+    <button class="icon" title="Show or hide the sidebar" aria-label="Sidebar" id="sideBtn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M6 2.5v11"/></svg></button>
+    <span class="vsep"></span>
+    <nav id="tabs" style="display:flex;align-items:center;gap:2px;min-width:0" aria-label="Places"></nav>
+    <button class="icon" title="Add a recipe from a reel (⌘N)" aria-label="Add" onclick="openImport()"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 3.5v9M3.5 8h9"/></svg></button>
+    <span class="spacer"></span>
+    <span class="status num" id="status"></span>
+    <button class="icon" aria-label="More" id="moreBtn"><svg viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="12.5" cy="8" r="1.2"/></svg></button>
+    <div class="menu" id="menu"></div>
+  </header>
+  <div class="body" id="body"></div>
+</div>
+
+<div class="scrim" id="scrim"><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+// ---------- Data ----------
+const FILMS = ["Provia","Velvia","Astia","Classic Chrome","Reala Ace","Pro Neg. Hi","Pro Neg. Std","Classic Neg.","Nostalgic Neg.","Eterna","Eterna Bleach Bypass","Acros","Acros+Ye","Acros+R","Acros+G","Monochrome","Monochrome+Ye","Monochrome+R","Monochrome+G","Sepia"];
+const WB = ["Auto","Auto White Priority","Auto Ambience Priority","Daylight","Shade","Fluorescent 1","Fluorescent 2","Fluorescent 3","Incandescent","Underwater","Kelvin"];
+const isMono = f => /^(Acros|Monochrome|Sepia)/.test(f);
+const DEF = { film:"Provia", grain:"Off", grainSize:"Small", cc:"Off", fxb:"Off", wb:"Auto", kelvin:5500, r:0, b:0, dr:"DR100", drp:"Off", hi:0, sh:0, color:0, wc:0, mg:0, sharp:0, nr:0, clarity:0 };
+const R = o => Object.assign({}, DEF, o);
+const clone = o => JSON.parse(JSON.stringify(o));
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const sign = v => v > 0 ? "+" + v : v < 0 ? "−" + Math.abs(v) : "0";
+const img = id => `img/${id}.jpg`;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+const LIB = [
+  { id:"green-acros", name:"Green Acros", status:"mine", shots:62, fav:true, source:"Your X-E5 · Jun–Jul 2026", photos:["p14","p12","p11","p16"], s:R({ film:"Acros+G", nr:-4 }) },
+  { id:"strong-classic-neg", name:"Strong Classic Neg", status:"mine", shots:39, source:"Your X-E5 · Jun–Jul 2026", photos:["p07","p01","p04"],
+    s:R({ film:"Classic Neg.", grain:"Strong", grainSize:"Large", cc:"Strong", fxb:"Strong", r:1, b:-3, hi:-2, sh:-1, color:1, sharp:-2, nr:-4 }) },
+  { id:"summer-chrome", name:"Summer Chrome", status:"to-try", source:"Reel · @example (example)", base:"p01", look:"saturate(.85) contrast(1.12) sepia(.12)", iso:"Auto, up to 6400 · +1/3 to +2/3",
+    s:R({ film:"Classic Chrome", grain:"Weak", cc:"Strong", fxb:"Weak", wb:"Daylight", r:2, b:-4, dr:"DR200", hi:-1, sh:1, color:2, sharp:-1, nr:-4 }) },
+  { id:"nostalgic-evening", name:"Nostalgic Evening", status:"to-try", source:"Reel · @example (example)", base:"p07", look:"sepia(.3) saturate(1.15) hue-rotate(-8deg) contrast(.95)", iso:"Auto, up to 12800 · 0 to +1/3",
+    s:R({ film:"Nostalgic Neg.", grain:"Weak", grainSize:"Large", cc:"Strong", fxb:"Weak", wb:"Shade", r:1, b:-2, dr:"DR400", hi:-1, sh:.5, color:1, sharp:-2, nr:-4, clarity:-2 }) },
+  { id:"cine-night", name:"Cine Night", status:"to-try", source:"Reel · @example (example)", base:"p16", look:"contrast(.9) saturate(.8)", iso:"Auto, up to 12800 · −1/3",
+    s:R({ film:"Eterna", grain:"Strong", fxb:"Strong", wb:"Kelvin", kelvin:3600, b:2, dr:"DR400", hi:-2, sh:-1, color:-2, sharp:-2, nr:-4, clarity:-3 }) },
+  { id:"velvia-hike", name:"Velvia Hike", status:"tried", source:"Website (example)", base:"p01", look:"saturate(1.45) contrast(1.12)", iso:"Auto, up to 3200 · 0",
+    s:R({ film:"Velvia", cc:"Strong", fxb:"Strong", dr:"DR200", sh:1, color:1, nr:-2, clarity:2 }) },
+  { id:"bleach-street", name:"Bleach Street", status:"to-try", source:"Reel · @example (example)", base:"p04", look:"saturate(.45) contrast(1.3) brightness(.95)", iso:"Auto, up to 6400 · −1/3",
+    s:R({ film:"Eterna Bleach Bypass", grain:"Strong", grainSize:"Large", cc:"Strong", wb:"Auto White Priority", r:-1, b:-2, dr:"DR400", hi:-1, sh:1, color:-1, sharp:-1, nr:-4, clarity:-2 }) },
+  { id:"soft-reala", name:"Soft Reala", status:"to-try", source:"Website (example)", base:"p04", look:"saturate(1.05) brightness(1.04) contrast(.94)", iso:"Auto, up to 6400 · +1/3",
+    s:R({ film:"Reala Ace", grain:"Weak", cc:"Weak", r:2, b:-2, drp:"Weak", sharp:-1, nr:-4, clarity:-1 }) },
+];
+const rec = id => LIB.find(r => r.id === id);
+const SLOTS = [
+  { key:"C1", name:"GREEN ACROS", s:clone(rec("green-acros").s) },
+  { key:"C2", name:"CLASSIC NEG", s:clone(rec("strong-classic-neg").s) },
+  { key:"C3", name:"SUMMER", s:clone(rec("summer-chrome").s) },
+  { key:"C4", name:"", s:clone(DEF) }, { key:"C5", name:"", s:clone(DEF) }, { key:"C6", name:"", s:clone(DEF) }, { key:"C7", name:"", s:clone(DEF) },
+  { key:"FS1", name:"", s:clone(rec("strong-classic-neg").s), dial:true },
+  { key:"FS2", name:"", s:clone(rec("green-acros").s), dial:true },
+  { key:"FS3", name:"", s:clone(DEF), dial:true },
+];
+SLOTS.forEach(x => { x.cam = clone(x.s); x.camName = x.name; });
+
+const st = { connected:false, connecting:false, step:0, tab:"library", filter:"all", mode:"list", sel:{ camera:"C1", library:"green-acros" }, editing:false, side:true, backups:[] };
+const $ = s => document.querySelector(s);
+
+// ---------- Helpers ----------
+const matchRec = s => LIB.find(r => same(r.s, s));
+const isDefault = s => same(s, DEF);
+const looks = r => r.photos ? "" : isMono(r.s.film) ? "grayscale(1) contrast(1.25)" : r.look;
+const photoOf = r => r ? img(r.photos ? r.photos[0] : r.base) : "";
+const pending = x => !same(x.s, x.cam) || x.name !== x.camName;
+function summary(s) {
+  const p = [];
+  if (s.grain !== "Off") p.push(`Gr ${s.grain[0]}${s.grainSize[0]}`);
+  if (s.cc !== "Off") p.push(`CC ${s.cc[0]}`);
+  if (s.fxb !== "Off") p.push(`FXB ${s.fxb[0]}`);
+  p.push(`${s.wb === "Kelvin" ? s.kelvin + "K" : s.wb === "Auto" ? "AWB" : s.wb.replace("Auto White Priority","AWP").replace("Auto Ambience Priority","AAP")} ${sign(s.r)}R ${sign(s.b)}B`);
+  p.push(s.drp !== "Off" ? `DRP ${s.drp}` : `${s.dr} H${sign(s.hi)} S${sign(s.sh)}`);
+  p.push(isMono(s.film) ? `WC${sign(s.wc)} MG${sign(s.mg)}` : `Col ${sign(s.color)}`);
+  p.push(`Sh${sign(s.sharp)} NR${sign(s.nr)}`);
+  return p.join(" · ");
+}
+function cardRows(s) {
+  const rows = [["Film", s.film], ["Grain", s.grain === "Off" ? "Off" : `${s.grain}, ${s.grainSize}`], ["Color chrome", `${s.cc} · FX Blue ${s.fxb}`],
+    ["White balance", `${s.wb === "Kelvin" ? s.kelvin + " K" : s.wb}, R ${sign(s.r)} B ${sign(s.b)}`],
+    ["Tone", s.drp !== "Off" ? `D-Range Priority ${s.drp}` : `${s.dr} · H ${sign(s.hi)} · S ${sign(s.sh)}`],
+    [isMono(s.film) ? "Toning" : "Color", isMono(s.film) ? `WC ${sign(s.wc)} · MG ${sign(s.mg)}` : sign(s.color)],
+    ["Sharp · NR · Clar.", `${sign(s.sharp)} · ${sign(s.nr)} · ${sign(s.clarity)}`]];
+  return rows.map(([k, v]) => `<div><span class="k">${k}</span>${esc(v)}</div>`).join("");
+}
+let toastTimer;
+function toast(text, action) {
+  const t = $("#toast");
+  t.innerHTML = `<span>${esc(text)}</span>${action ? `<button onclick="${action.fn}">${action.label}</button>` : ""}`;
+  t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 3200);
+}
+const ICON = {
+  edit: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7"/><circle cx="10.5" cy="4.5" r="1.5"/><circle cx="5.5" cy="11.5" r="1.5"/></svg>',
+  heart: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 13.5S2 10 2 6a3 3 0 0 1 6-1 3 3 0 0 1 6 1c0 4-6 7.5-6 7.5z"/></svg>',
+  heartFill: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 13.5S2 10 2 6a3 3 0 0 1 6-1 3 3 0 0 1 6 1c0 4-6 7.5-6 7.5z"/></svg>',
+  copy: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="5" y="5" width="8.5" height="8.5" rx="1.5"/><path d="M3 10.5V3.5A1 1 0 0 1 4 2.5h7"/></svg>',
+  slot: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="4" width="13" height="9" rx="1.5"/><circle cx="8" cy="8.5" r="2.5"/><path d="M5 4l1-1.5h4L11 4"/></svg>',
+  save: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M4 2.5h8v11l-4-3-4 3z"/></svg>',
+  clock: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg>',
+  list: '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1 2.5h10M1 6h10M1 9.5h10"/></svg>',
+  grid: '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1" y="1" width="4" height="4" rx=".6"/><rect x="7" y="1" width="4" height="4" rx=".6"/><rect x="1" y="7" width="4" height="4" rx=".6"/><rect x="7" y="7" width="4" height="4" rx=".6"/></svg>',
+};
+
+// ---------- Camera connection ----------
+const STEPS = ["Found X-E5 on USB-C", "Mode: USB RAW CONV./BACKUP RESTORE", "Read C1–C7", "Saved a backup of every slot"];
+function plug() {
+  if (st.connected) { st.connected = false; st.editing = false; st.tab = "library"; render(); toast("X-E5 disconnected"); return; }
+  if (st.connecting) return;
+  st.connecting = true; st.tab = "camera"; st.step = 0; render();
+  const tick = () => {
+    st.step++; render();
+    if (st.step < STEPS.length) setTimeout(tick, 520);
+    else setTimeout(() => { st.connecting = false; st.connected = true; st.backups.unshift({ when:new Date(), why:"On connect" }); render(); toast("X-E5 · 7 slots read · backup saved"); }, 420);
+  };
+  setTimeout(tick, 520);
+}
+
+// ---------- Render ----------
+function render() {
+  renderTop();
+  const body = $("#body");
+  if (st.tab === "camera" && !st.connected) { body.className = "body full"; body.innerHTML = startPage(); return; }
+  body.className = "body" + (st.side ? "" : " full");
+  body.innerHTML = (st.side ? `<aside class="side">${st.tab === "camera" ? slotSide() : libSide()}</aside>` : "") +
+    `<main class="pane">${st.tab === "camera" ? slotPane() : recipePane()}</main>` +
+    `<aside class="edit ${st.editing && st.tab === "camera" ? "open" : ""}" aria-label="Edit slot"><div class="in" id="editIn"></div></aside>`;
+  if (st.editing && st.tab === "camera") drawEditor();
+  const selEl = body.querySelector('[aria-selected="true"].row, [aria-selected="true"].tile');
+  if (selEl) selEl.scrollIntoView({ block: "nearest" });
+}
+
+function renderTop() {
+  const changed = SLOTS.filter(x => !x.dial && pending(x)).length;
+  $("#tabs").innerHTML =
+    `<button class="tab" aria-selected="${st.tab === "camera"}" onclick="go('camera')" title="${st.connected ? "FUJIFILM X-E5 on USB-C" : "Plug in your Fujifilm"}"><span class="dot ${st.connected ? "" : "off"}"></span>${st.connected ? "X-E5" : st.connecting ? "Reading…" : "No camera"}</button>
+     <span class="tabsep"></span>
+     <button class="tab" aria-selected="${st.tab === "library"}" onclick="go('library')">Recipes</button>`;
+  $("#status").textContent = st.connecting ? "Reading the camera…" : st.connected ? (changed ? `${changed} slot${changed > 1 ? "s" : ""} changed · ↵ to write` : "In sync with the camera") : `${LIB.length} recipes · ${LIB.filter(r => r.status === "mine").reduce((n, r) => n + r.shots, 0)} of your photos`;
+  $("#menu").innerHTML = `
+    <button onclick="openImport()">Add from a reel…<kbd>⌘N</kbd></button>
+    <button onclick="toast('Scanning your Fujifilm JPEGs… 112 photos, 2 recipes, both already in the library')">Find recipes in my photos</button>
+    <hr>
+    <button onclick="plug()">${st.connected ? "Disconnect X-E5" : "Simulate plugging in the X-E5"}</button>
+    <button onclick="openBackups()" ${st.backups.length ? "" : "disabled"}>Backups (${st.backups.length})…</button>
+    <hr>
+    <button onclick="toast('Agents: fuji mcp — Claude can read slots, save recipes and write after you approve')">Agents (MCP)…</button>`;
+}
+
+function startPage() {
+  return `<div class="start"><div>
+    <svg class="mk" viewBox="0 0 132 44" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+      <rect x="30" y="8" width="72" height="30" rx="6"/><rect x="38" y="4" width="14" height="4" rx="1.5"/><circle cx="66" cy="23" r="9"/><circle cx="66" cy="23" r="4"/>
+      <path d="M2 23h20M110 23h20" stroke-dasharray="${st.connecting ? "0" : "3 4"}"/></svg>
+    <h1>${st.connecting ? "Reading your camera" : "Plug in your Fujifilm"}</h1>
+    <p>${st.connecting ? "Nothing on it changes until you press Write." : "USB-C cable, camera on, USB Setting: RAW CONV./BACKUP RESTORE."}</p>
+    ${st.connecting ? `<ul class="steps">${STEPS.map((t, i) => `<li class="${i < st.step ? "done" : ""}">${t}</li>`).join("")}</ul>` :
+      `<button class="cap" onclick="plug()">Simulate plugging in</button><div class="or">or browse your recipes</div>`}
+  </div></div>`;
+}
+
+function slotRow(x) {
+  const r = matchRec(x.s), empty = isDefault(x.s) && !x.name;
+  return `<button class="row" role="option" aria-selected="${st.sel.camera === x.key}" onclick="selectSlot('${x.key}')" ondblclick="selectSlot('${x.key}');edit(true)">
+    <span class="thumb" style="${r ? `background-image:url('${photoOf(r)}');filter:${looks(r)}` : ""}">${r ? `<span class="slot">${x.key}</span>` : x.key}</span>
+    <span class="t">
+      <span class="name">${empty ? `<span style="color:var(--ink3)">Unused</span>` : esc(x.name || r?.name || x.s.film)}${!x.dial && pending(x) ? '<i class="mark" title="Changed, not written yet"></i>' : ""}</span>
+      <span class="cap ${r ? "on" : ""}">${empty ? "Provia defaults" : esc(x.s.film) + (r ? " · " + esc(r.name) : " · not in your library")}</span>
+      <span class="info">${empty ? "&nbsp;" : esc(summary(x.s))}</span>
+    </span></button>`;
+}
+function slotSide() {
+  const changed = SLOTS.filter(x => !x.dial && pending(x)).length;
+  return `<div class="head" role="tablist">
+      <span class="ftab" aria-selected="true">Slots<span class="n">7</span></span>
+      <span class="ftab">Changed<span class="n">${changed}</span></span>
+      <span class="ftab">Backups<span class="n">${st.backups.length}</span></span></div>
+    <div class="list" role="listbox">${SLOTS.filter(x => !x.dial).map(slotRow).join("")}
+      <div class="heading">Film simulation dial · read only</div>${SLOTS.filter(x => x.dial).map(slotRow).join("")}</div>`;
+}
+function slotPane() {
+  const x = SLOTS.find(s => s.key === st.sel.camera), r = matchRec(x.s), empty = isDefault(x.s) && !x.name;
+  const chip = x.dial ? `<span>Set on the camera's dial</span>` :
+    pending(x) ? `<span>Changed</span><span class="sep">·</span><button onclick="askWrite()">Write ${x.key}</button>` :
+    r ? `<span>${esc(r.name)}</span><span class="sep">·</span><span>on the camera</span>` : `<span>Not in your library</span><span class="sep">·</span><button onclick="toast('Saved ${x.key} as a recipe')">Save</button>`;
+  return `<div class="bar">
+      <span class="title">${x.key}${x.name ? " · " + esc(x.name) : ""}</span><span class="sub">${empty ? "Unused" : esc(x.s.film)}</span>
+      <span class="spacer"></span>
+      ${x.dial ? "" : `<button class="icon" aria-pressed="${st.editing}" title="Edit slot (E)" onclick="edit()">${ICON.edit}</button>`}
+      <button class="icon" title="Copy as text" onclick="toast('Copied ${x.key} as text')">${ICON.copy}</button>
+      <button class="icon" title="Save as a recipe" onclick="toast('Saved ${x.key} to your recipes')">${ICON.save}</button>
+      <button class="icon" title="Backups" onclick="openBackups()">${ICON.clock}</button>
+    </div>
+    <div class="stage">
+      ${r ? `<div class="photo" style="background-image:url('${photoOf(r)}');filter:${looks(r)}"></div>` : `<div class="empty-photo"><b>${x.key}</b>${empty ? "Unused slot · Provia defaults<br>Load a recipe from the editor (E)" : "No photo for these settings yet"}</div>`}
+      ${r && !r.photos ? `<span class="prev">Preview · your photo with a rough look</span>` : ""}
+      <div class="chip">${chip}</div>
+      ${empty ? "" : `<div class="card">${cardRows(x.s)}${r ? `<div class="src">${esc(r.source)}</div>` : ""}</div>`}
+    </div>`;
+}
+
+function libList() {
+  return LIB.filter(r => st.filter === "all" || (st.filter === "fav" ? r.fav : st.filter === "mine" ? r.status === "mine" : r.status !== "mine"));
+}
+function slotsHolding(r) { return st.connected ? SLOTS.filter(x => same(x.s, r.s)).map(x => x.key) : []; }
+function libSide() {
+  const n = f => LIB.filter(r => f === "all" || (f === "fav" ? r.fav : f === "mine" ? r.status === "mine" : r.status !== "mine")).length;
+  const tab = (f, label) => `<button class="ftab" role="tab" aria-selected="${st.filter === f}" onclick="setFilter('${f}')">${label}<span class="n">${n(f)}</span></button>`;
+  const list = libList();
+  const rows = list.map(r => {
+    const where = slotsHolding(r);
+    return `<button class="row" role="option" aria-selected="${st.sel.library === r.id}" onclick="selectRecipe('${r.id}')">
+      <span class="thumb" style="background-image:url('${photoOf(r)}');filter:${looks(r)}"></span>
+      <span class="t"><span class="name">${esc(r.name)}${r.fav ? `<svg class="heart" viewBox="0 0 16 16" fill="currentColor"><path d="M8 13.5S2 10 2 6a3 3 0 0 1 6-1 3 3 0 0 1 6 1c0 4-6 7.5-6 7.5z"/></svg>` : ""}</span>
+      <span class="cap ${where.length ? "on" : ""}">${esc(r.s.film)} · ${where.length ? "in " + where.join(", ") : r.status === "mine" ? r.shots + " shots" : r.status === "tried" ? "tried" : "to try"}</span>
+      <span class="info">${esc(summary(r.s))}</span></span></button>`;
+  }).join("");
+  const tiles = list.map(r => {
+    const where = slotsHolding(r);
+    return `<button class="tile" aria-selected="${st.sel.library === r.id}" title="${esc(r.name)}" onclick="selectRecipe('${r.id}')" style="background-image:url('${photoOf(r)}');filter:${looks(r)}">
+      ${where.length ? `<span class="pill light">${where[0]}</span>` : r.status === "mine" ? `<span class="pill">${r.shots}</span>` : ""}</button>`;
+  }).join("");
+  return `<div class="head" role="tablist">${tab("all","All")}${tab("mine","Shot with")}${tab("try","To try")}
+      <button class="ftab" role="tab" aria-selected="${st.filter === "fav"}" onclick="setFilter('fav')" aria-label="Favorites">♡<span class="n">${n("fav")}</span></button>
+      <span class="views"><button aria-pressed="${st.mode === "list"}" onclick="setMode('list')" title="List">${ICON.list}</button><button aria-pressed="${st.mode === "grid"}" onclick="setMode('grid')" title="Grid">${ICON.grid}</button></span></div>
+    <div class="list ${st.mode === "grid" ? "grid" : ""}" role="listbox">${st.mode === "grid" ? tiles : rows}</div>`;
+}
+function recipePane() {
+  const r = rec(st.sel.library) || LIB[0], where = slotsHolding(r);
+  const free = SLOTS.find(x => !x.dial && isDefault(x.s) && !x.name);
+  const chip = !st.connected ? `<span>Plug in the camera to put it in a slot</span>` :
+    where.length ? `<span>In ${where.join(", ")}</span>` : `<span>Not on the camera</span><span class="sep">·</span><button onclick="putIn('${r.id}','${free ? free.key : "C7"}')">Put in ${free ? free.key : "C7"}</button>`;
+  return `<div class="bar">
+      <span class="title">${esc(r.name)}</span><span class="sub">${esc(r.source)}</span><span class="spacer"></span>
+      <button class="icon" aria-pressed="${!!r.fav}" title="Favorite (F)" onclick="fav('${r.id}')">${r.fav ? ICON.heartFill : ICON.heart}</button>
+      <button class="icon" title="Put in a slot" onclick="${st.connected ? `putIn('${r.id}','${free ? free.key : "C7"}')` : "toast('Plug in the camera first')"}">${ICON.slot}</button>
+      <button class="icon" title="Copy as text (⌘C)" onclick="toast('Copied “${esc(r.name)}” as text')">${ICON.copy}</button>
+    </div>
+    <div class="stage">
+      <div class="photo" style="background-image:url('${photoOf(r)}');filter:${looks(r)}"></div>
+      ${r.photos ? "" : `<span class="prev">Preview · your photo with a rough look${st.connected ? ' · <a href="#" onclick="toast(\'The X-E5 renders DSCF2900.RAF with this recipe…\');return false">render in camera</a>' : ""}</span>`}
+      <div class="chip">${chip}</div>
+      <div class="card">${cardRows(r.s)}${r.iso ? `<div><span class="k">ISO · EV</span>${esc(r.iso)}</div>` : ""}<div class="src">${r.status === "mine" ? `${r.shots} of your photos` : esc(r.source)}</div></div>
+    </div>`;
+}
+
+// ---------- Editor with tick dials ----------
+const DIALS = { r:[-9,9,1,3], b:[-9,9,1,3], hi:[-2,4,.5,2], sh:[-2,4,.5,2], color:[-4,4,1,2], wc:[-9,9,1,3], mg:[-9,9,1,3], sharp:[-4,4,1,2], nr:[-4,4,1,2], clarity:[-5,5,1,5], kelvin:[2500,10000,100,10] };
+function drawEditor() {
+  const x = SLOTS.find(s => s.key === st.sel.camera), s = x.s, o = x.cam;
+  const ch = k => !same(s[k], o[k]) ? " changed" : "";
+  const seg = (k, opts) => `<div class="seg">${opts.map(v => `<button aria-pressed="${s[k] === v}" onclick="setF('${k}','${v}')">${v.replace("Strong","Strong")}</button>`).join("")}</div>`;
+  const field = (k, label, ctl, off, val) => `<div class="f${ch(k)}${off ? " off" : ""}"><div class="lab"><span>${label}</span>${val !== undefined ? `<b>${val}</b>` : ""}</div>${ctl}</div>`;
+  const dial = (k, label, off) => field(k, label, `<canvas class="dial" data-k="${k}" aria-label="${label}"></canvas>`, off, k === "kelvin" ? s[k] + " K" : sign(s[k]));
+  const mono = isMono(s.film), drp = s.drp !== "Off", changed = pending(x);
+  $("#editIn").innerHTML = `
+    <div class="nm"><input id="slotName" maxlength="25" value="${esc(x.name)}" placeholder="Slot name" aria-label="Slot name" oninput="nameSlot(this.value)">
+      <button class="icon" title="Close (Esc)" onclick="edit(false)">×</button></div>
+    <div class="scroll">
+      <div class="grp">Load</div>
+      <select class="load" onchange="loadInto(this.value)" aria-label="Load a recipe"><option value="">A recipe from your library…</option>${LIB.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join("")}</select>
+      <div class="grp">Film</div>
+      ${field("film", "Simulation", `<select onchange="setF('film',this.value)">${FILMS.map(f => `<option ${f === s.film ? "selected" : ""}>${f}</option>`).join("")}</select>`)}
+      ${field("grain", "Grain", seg("grain", ["Off","Weak","Strong"]))}
+      ${field("grainSize", "Grain size", seg("grainSize", ["Small","Large"]), s.grain === "Off")}
+      ${field("cc", "Color chrome", seg("cc", ["Off","Weak","Strong"]))}
+      ${field("fxb", "FX Blue", seg("fxb", ["Off","Weak","Strong"]))}
+      <div class="grp">White balance</div>
+      ${field("wb", "Mode", `<select onchange="setF('wb',this.value)">${WB.map(f => `<option ${f === s.wb ? "selected" : ""}>${f}</option>`).join("")}</select>`)}
+      ${s.wb === "Kelvin" ? dial("kelvin", "Kelvin") : ""}
+      ${dial("r", "Shift red")}${dial("b", "Shift blue")}
+      <div class="grp">Tone</div>
+      ${field("drp", "D-Range Priority", seg("drp", ["Off","Auto","Weak","Strong"]))}
+      ${field("dr", "Dynamic range", seg("dr", ["Auto","DR100","DR200","DR400"]), drp)}
+      ${dial("hi", "Highlight", drp)}${dial("sh", "Shadow", drp)}
+      ${mono ? dial("wc", "Warm · cool") + dial("mg", "Magenta · green") : dial("color", "Color")}
+      <div class="grp">Detail</div>
+      ${dial("sharp", "Sharpness")}${dial("nr", "High ISO NR")}${dial("clarity", "Clarity")}
+      <div class="hint">Drag a dial · double-click resets to 0 · dots mark what differs from the camera. DR400 needs ISO 640+ on the X-E5.</div>
+    </div>
+    <div class="confirm" id="confirm"><p>Replace ${x.key} on the X-E5? Every slot was backed up when it connected; ${x.key} is read back after writing.</p>
+      <div style="display:flex;gap:6px"><button class="btn primary" onclick="writeSlot()">Write</button><button class="btn" onclick="$('#confirm').classList.remove('show')">Cancel</button></div></div>
+    <div class="foot"><span class="sub">${changed ? "Changed · not on the camera yet" : "Same as the camera"}</span>
+      <button class="btn" ${changed ? "" : "disabled"} onclick="revert()">Revert</button>
+      <button class="btn primary" ${changed ? "" : "disabled"} onclick="askWrite()">Write ${x.key}</button></div>`;
+  document.querySelectorAll("canvas.dial").forEach(paintDial);
+  bindDials();
+}
+function paintDial(cv) {
+  const k = cv.dataset.k, [lo, hi, step, major] = DIALS[k], v = SLOTS.find(s => s.key === st.sel.camera).s[k];
+  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = 34;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const g = cv.getContext("2d"); g.scale(dpr, dpr);
+  const ink = getComputedStyle(document.documentElement).getPropertyValue("--ink").trim();
+  const ppm = k === "kelvin" ? 6 : step === .5 ? 12 : 11, mid = w / 2;
+  g.strokeStyle = ink; g.fillStyle = ink; g.font = "9px ui-monospace, SF Mono, Menlo, monospace"; g.textAlign = "center";
+  for (let i = Math.round(lo / step); i <= Math.round(hi / step); i++) {
+    const val = i * step, x = mid + (val - v) / step * ppm;
+    if (x < -10 || x > w + 10) continue;
+    const isMajor = i % major === 0, len = isMajor ? 13 : 5;
+    g.globalAlpha = isMajor ? .55 : .22; g.lineWidth = isMajor ? 1 : .6;
+    g.beginPath(); g.moveTo(x, h - len); g.lineTo(x, h); g.stroke();
+    if (isMajor) { g.globalAlpha = val === 0 ? .75 : .4; g.fillText(val === 0 ? "0" : (k === "kelvin" ? val : sign(+val.toFixed(1))), x, h - len - 4); }
+  }
+  g.globalAlpha = 1; g.lineWidth = 1.5; g.beginPath(); g.moveTo(mid, 2); g.lineTo(mid, h); g.stroke();
+}
+function bindDials() {
+  document.querySelectorAll("canvas.dial").forEach(cv => {
+    const k = cv.dataset.k, [lo, hi, step] = DIALS[k], ppm = k === "kelvin" ? 6 : step === .5 ? 12 : 11;
+    let start = null, x0 = 0;
+    cv.onpointerdown = e => { start = SLOTS.find(s => s.key === st.sel.camera).s[k]; x0 = e.clientX; cv.setPointerCapture(e.pointerId); };
+    cv.onpointermove = e => {
+      if (start === null) return;
+      const x = SLOTS.find(s => s.key === st.sel.camera);
+      const next = Math.min(hi, Math.max(lo, Math.round((start - (e.clientX - x0) / ppm * step) / step) * step));
+      if (next !== x.s[k]) { x.s[k] = +next.toFixed(1); paintDial(cv); cv.closest(".f").querySelector(".lab b").textContent = k === "kelvin" ? next + " K" : sign(x.s[k]); cv.closest(".f").classList.toggle("changed", !same(x.s[k], x.cam[k])); }
+    };
+    cv.onpointerup = () => { if (start !== null) { start = null; refreshAfterEdit(); } };
+    cv.ondblclick = () => { const x = SLOTS.find(s => s.key === st.sel.camera); x.s[k] = k === "kelvin" ? 5500 : 0; refreshAfterEdit(); };
+  });
+}
+function refreshAfterEdit() {
+  const scroll = document.querySelector(".edit .scroll")?.scrollTop || 0;
+  render();
+  const el = document.querySelector(".edit .scroll"); if (el) el.scrollTop = scroll;
+}
+
+// ---------- Actions ----------
+function go(tab) { st.tab = tab; if (tab !== "camera") st.editing = false; render(); }
+function setFilter(f) { st.filter = f; const l = libList(); if (!l.find(r => r.id === st.sel.library) && l[0]) st.sel.library = l[0].id; render(); }
+function setMode(m) { st.mode = m; render(); }
+function selectSlot(k) { st.sel.camera = k; if (SLOTS.find(x => x.key === k).dial) st.editing = false; render(); }
+function selectRecipe(id) { st.sel.library = id; render(); }
+function edit(on) { const x = SLOTS.find(s => s.key === st.sel.camera); if (x.dial) return; st.editing = on ?? !st.editing; render(); }
+function setF(k, v) { const x = SLOTS.find(s => s.key === st.sel.camera); x.s[k] = v; if (k === "grain" && v !== "Off" && x.s.grainSize === "Off") x.s.grainSize = "Small"; refreshAfterEdit(); }
+function nameSlot(v) { const x = SLOTS.find(s => s.key === st.sel.camera); x.name = v.replace(/[^\x20-\x7e]/g, "").slice(0, 25); renderTop(); }
+function loadInto(id) { if (!id) return; const x = SLOTS.find(s => s.key === st.sel.camera), r = rec(id); x.s = clone(r.s); x.name = r.name.toUpperCase().slice(0, 25); refreshAfterEdit(); toast(`Loaded “${r.name}” into ${x.key} · not written yet`); }
+function revert() { const x = SLOTS.find(s => s.key === st.sel.camera); x.s = clone(x.cam); x.name = x.camName; refreshAfterEdit(); }
+function askWrite() { if (!st.editing) { st.editing = true; render(); } $("#confirm")?.classList.add("show"); }
+function writeSlot() {
+  const x = SLOTS.find(s => s.key === st.sel.camera);
+  x.cam = clone(x.s); x.camName = x.name; st.backups.unshift({ when:new Date(), why:`Before writing ${x.key}` });
+  render(); toast(`Wrote ${x.key} · read back: all settings match`, { label:"Undo", fn:"undoWrite('" + x.key + "')" });
+}
+function undoWrite(k) { toast(`Restored ${k} from the backup`); }
+function putIn(id, key) {
+  const r = rec(id), x = SLOTS.find(s => s.key === key);
+  x.s = clone(r.s); x.name = r.name.toUpperCase().slice(0, 25);
+  st.tab = "camera"; st.sel.camera = key; st.editing = true; render(); askWrite();
+}
+function fav(id) { const r = rec(id); r.fav = !r.fav; render(); toast(r.fav ? `“${r.name}” is a favorite` : "Removed from favorites"); }
+
+// ---------- Sheets ----------
+function sheet(html) { $("#sheet").innerHTML = html; $("#scrim").classList.add("show"); $("#sheet").querySelector("input,button")?.focus(); }
+function closeSheet() { $("#scrim").classList.remove("show"); }
+$("#scrim").addEventListener("click", e => { if (e.target.id === "scrim") closeSheet(); });
+function openImport() {
+  $("#menu").classList.remove("show");
+  sheet(`<h3>Add a recipe from a reel</h3><p class="sub">Instagram, TikTok or YouTube. Read on this Mac: frames, caption, comments and speech.</p>
+    <form onsubmit="readReel(event)"><input id="reel" value="https://www.instagram.com/reel/DExample123/" aria-label="Link">
+    <div id="prog"></div><div class="acts"><button type="button" class="btn" onclick="closeSheet()">Cancel</button><button class="btn primary">Read recipe</button></div></form>`);
+}
+function readReel(e) {
+  e.preventDefault();
+  const steps = ["Downloading the reel", "Reading text in 41 frames", "Transcribing speech", "Checking it fits the X-E5"]; let i = 0;
+  const p = $("#prog"); p.className = "prog";
+  const t = setInterval(() => {
+    p.innerHTML = steps.map((s, j) => `<span style="color:${j <= i ? "var(--ink)" : "var(--ink3)"}">${j < i ? "●" : "○"} ${s}</span>`).join("");
+    if (++i > steps.length) { clearInterval(t); showFound(); }
+  }, 450);
+}
+function showFound() {
+  const s = rec("summer-chrome").s;
+  sheet(`<h3>Summer Chrome</h3><p class="sub">@example · read from 3 frames and the caption · works on X-Trans IV and V</p>
+    <div class="found"><div class="frame">0:07<br><br>CLASSIC CHROME<br>Grain W/S<br>CCE Strong<br>CCFXB Weak<br>WB Daylight<br>+2R −4B<br>DR200<br>H −1 S +1<br>Color +2<br>Sharp −1<br>NR −4<br><br>ISO ≤ 6400<br>+1/3 EV</div>
+    <dl class="kv"><dt>Film</dt><dd>Classic Chrome</dd><dt>Grain</dt><dd>Weak, Small</dd><dt>Color chrome</dt><dd>Strong · FX Blue Weak</dd>
+      <dt>White balance</dt><dd>Daylight, R +2 B −4 <span class="chk" title="Read from one frame only">check</span></dd><dt>Tone</dt><dd>DR200 · H −1 · S +1</dd>
+      <dt>Color</dt><dd>+2</dd><dt>Sharp · NR</dt><dd>−1 · −4</dd><dt>Clarity</dt><dd>0 <span class="chk" title="Not in the reel: camera default">default</span></dd><dt>ISO · EV</dt><dd>Auto ≤ 6400 · +1/3 to +2/3</dd></dl></div>
+    <div class="acts"><button class="btn" onclick="closeSheet()">Discard</button><button class="btn primary" onclick="closeSheet();go('library');setFilter('try');selectRecipe('summer-chrome');toast('Added “Summer Chrome” to To try')">Add to To try</button></div>`);
+}
+function openBackups() {
+  $("#menu").classList.remove("show");
+  sheet(`<h3>Backups</h3><p class="sub">Every slot is saved when the camera connects and before each write. Restoring shows what changes first.</p>
+    ${st.backups.length ? st.backups.map(b => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px solid var(--line);font-size:12px"><span>${b.when.toLocaleString([], { dateStyle:"medium", timeStyle:"short" })} · X-E5 <span style="color:var(--ink2)">· ${esc(b.why)}</span></span><button class="btn" onclick="closeSheet();toast('Restore preview: nothing differs from the camera')">Restore…</button></div>`).join("") : `<p class="sub">No backups yet: plug in the camera.</p>`}
+    <div class="acts"><button class="btn primary" onclick="closeSheet()">Done</button></div>`);
+}
+$("#moreBtn").addEventListener("click", e => { e.stopPropagation(); $("#menu").classList.toggle("show"); });
+document.addEventListener("click", e => { if (!e.target.closest("#menu")) $("#menu").classList.remove("show"); });
+$("#sideBtn").addEventListener("click", () => { st.side = !st.side; render(); });
+
+// ---------- Keyboard (like Photo Minimalist) ----------
+document.addEventListener("keydown", e => {
+  if (e.target.matches("input, select")) { if (e.key === "Escape") e.target.blur(); return; }
+  if ($("#scrim").classList.contains("show")) { if (e.key === "Escape") closeSheet(); return; }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") { e.preventDefault(); openImport(); return; }
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    const d = e.key === "ArrowDown" ? 1 : -1;
+    if (st.tab === "camera" && st.connected) { const i = SLOTS.findIndex(x => x.key === st.sel.camera); const n = SLOTS[Math.max(0, Math.min(SLOTS.length - 1, i + d))]; selectSlot(n.key); }
+    else if (st.tab === "library") { const l = libList(), i = l.findIndex(r => r.id === st.sel.library); const n = l[Math.max(0, Math.min(l.length - 1, i + d * (st.mode === "grid" ? 3 : 1)))]; if (n) selectRecipe(n.id); }
+  } else if (e.key.toLowerCase() === "e" && st.tab === "camera" && st.connected) edit();
+  else if (e.key === "Enter" && st.tab === "camera" && st.connected && pending(SLOTS.find(x => x.key === st.sel.camera))) askWrite();
+  else if (e.key === "Escape") { if (st.editing) edit(false); }
+  else if (e.key.toLowerCase() === "f" && st.tab === "library") fav(st.sel.library);
+});
+window.addEventListener("resize", () => document.querySelectorAll("canvas.dial").forEach(paintDial));
+render();
+</script>
+</body>
+</html>
