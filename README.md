@@ -17,9 +17,9 @@ Native Swift, on-device, nothing uploaded.
 
 <br>
 
-[![Download for macOS](https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/vekaev/fuji-recipes/releases/latest)
+[![Download for macOS](https://img.shields.io/badge/Download-macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/vekaev/fuji-recipes/releases/latest/download/FujiRecipes-mac.dmg)
 
-<sub>One line in Terminal (below) installs the <code>fuji</code> CLI, its MCP server for Claude, and the /recipe skill. Apple Silicon + Intel, macOS 14+.</sub>
+<sub>The Mac app updates itself. One more line in Terminal (below) adds the <code>fuji</code> CLI, its MCP server for Claude, and the /recipe skill. Apple Silicon + Intel, macOS 14+.</sub>
 
 </div>
 
@@ -54,6 +54,23 @@ app with auto-updates comes with its first release.
 <br clear="left">
 
 ## Install
+
+### The Mac app
+
+**One line in Terminal** (no security prompt):
+
+    curl -fsSL https://raw.githubusercontent.com/vekaev/fuji-recipes/main/scripts/install-app.sh | sh
+
+It downloads the latest release, puts Fuji Recipes in Applications and opens it.
+
+**Or the DMG:** [download](https://github.com/vekaev/fuji-recipes/releases/latest/download/FujiRecipes-mac.dmg), open it
+and drag Fuji Recipes to Applications. The first time, if your Mac says it can't check the app, open
+System Settings ▸ Privacy & Security and click **Open Anyway** (once; Fuji Recipes isn't notarized yet).
+
+Either way it updates itself: once a day, or right away via *Fuji Recipes ▸ Check for Updates…*.
+Needs macOS 14 or later, Apple Silicon or Intel. iPhone / iPad: build from source for now (TestFlight later).
+
+### The CLI and MCP server (for Claude)
 
 **One line in Terminal** (no security prompt):
 
@@ -163,8 +180,11 @@ Thank you. MIT licence.
 
 ## Releasing
 
-`scripts/release.sh X.Y.Z [notes.md]`: tests, a universal build (Apple Silicon + Intel), signs, packs
-`fuji-macos.tar.gz` (binary + skill) with its SHA-256, commits "Release X.Y.Z", tags, pushes and creates the GitHub
-release. `--local` only builds into `dist/` for testing the installer (`FUJI_BASE_URL=…`). Never replace an asset on
-an existing release (installers check its checksum); a fix is a new patch release. The Mac app will add a DMG and
-Sparkle auto-update here, like Photo Minimalist.
+`scripts/release.sh X.Y.Z [notes.md]` releases both at one version: bumps the app (project.yml) and the CLI
+(`Sources/fuji/main.swift`), builds the Mac app (universal, signed with the owner's certificate so permissions
+survive updates) into `FujiRecipes-mac.dmg`, signs it for Sparkle and writes `appcast.xml`, builds and signs the CLI
+into `fuji-macos.tar.gz` + SHA-256, commits "Release X.Y.Z", tags, pushes and creates the GitHub release with all of
+them. `--local URL` builds into `dist/` only, for testing an update (`EXTRA_SETTINGS=PRODUCT_BUNDLE_IDENTIFIER=…`).
+Never replace an asset on an existing release (Sparkle and the installers check signatures and checksums); a fix is
+a new patch release. The update key lives in the login keychain (account `fuji-recipes`); back it up with
+`build/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys --account fuji-recipes -x <safe place>/fuji-recipes-sparkle.key`.

@@ -10,6 +10,9 @@ settings:
 packages:
   FujiKit:
     path: .
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.10.1"
 targets:
   FujiRecipes:
     type: application
@@ -18,8 +21,20 @@ targets:
     dependencies:
       - package: FujiKit
         product: FujiKit
+      - package: Sparkle
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        SUFeedURL: $(SPARKLE_FEED_URL)
+        SUPublicEDKey: XriiVs6Qfd6WDdrN3g+4gO58XTYf+yB40ku+fNnAJ4Y=
+        SUEnableAutomaticChecks: true
+        SUScheduledCheckInterval: 86400
     settings:
       base:
+        # GitHub always serves the latest release's asset here; release.sh --local overrides it for tests.
+        SPARKLE_FEED_URL: https://github.com/vekaev/fuji-recipes/releases/latest/download/appcast.xml
         PRODUCT_BUNDLE_IDENTIFIER: app.fujirecipes.mac
         PRODUCT_NAME: Fuji Recipes
         GENERATE_INFOPLIST_FILE: YES
