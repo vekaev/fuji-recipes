@@ -7,7 +7,9 @@ import Foundation
 /// the file's own codes) come from grawji's hardware-verified research (src/grawji/camera/fs_recipe.py, GPL-3.0: facts
 /// only, no code). Verified here against the owner's X-E5 fw 1.12 on 2026-11-04: FS1 decoded to the Classic Neg. recipe
 /// found in their photos' EXIF on every field but the WB shift, which reads 0/0 — so the shift offsets are unverified.
-/// Read-only: writing FS slots means patching this file (additive checksum at 0x120) and restoring it whole.
+/// Writing (ADR 0004, test passed 2026-11-04): `patch` changes one slot's bytes and moves the u16 checksum at 0x120 by the
+/// same byte delta; `FujiCamera.writeDialSlot` restores the whole file and reads it back. WB shift and WC/MG offsets are
+/// still unverified, so patches leave them as they are.
 public enum SettingsFile {
     public struct Layout: Sendable {
         public let size: Int
@@ -27,6 +29,63 @@ public enum SettingsFile {
         0x14: "Eterna Bleach Bypass", 0x16: "Acros", 0x17: "Acros+R", 0x18: "Acros+Ye", 0x19: "Acros+G"]
     static let wb: [Int: String] = [0: "Auto", 3: "Daylight", 4: "Shade", 5: "Fluorescent 1", 6: "Fluorescent 2",
         7: "Fluorescent 3", 8: "Incandescent", 9: "Underwater", 10: "Kelvin"]
+
+    /// Bytes the camera rewrites itself on a restore (seen on the X-E5): the checksum, a "_FUJI" mark, two counters.
+    public static let volatile: Set<Int> = Set([0x120, 0x121] + Array(5956...5960) + Array(0xF6C0...0xF6C5) + [0xF724, 0xF725])
+    /// Recipe fields a patch writes. The rest (WB shift, mono WC/MG, D-Range Priority) stay as set on the camera.
+    public static let writable = ["film", "grainRoughness", "grainSize", "colorChrome", "colorChromeFxBlue", "wb", "wbKelvin",
+                                  "dynamicRange", "highlight", "shadow", "color", "sharpness", "highIsoNr", "clarity"]
+
+    /// The file's own value codes for a recipe (inverse of `dialSlots`). Nil where a value has no code here.
+    static func codes(_ r: RecipeSettings) -> [String: Int] {
+        var c: [String: Int] = [:]
+        if let f = films.first(where: { $0.value == r.film })?.key { c["film"] = f }
+        c["grain"] = ["Strong": 0, "Weak": 1, "Off": 2][r.grainRoughness] ?? 2
+        c["gsize"] = r.grainSize == "Large" ? 1 : 0
+        let effect = ["Off": 0, "Weak": 1, "Strong": 2]
+        c["cc"] = effect[r.colorChrome] ?? 0
+        c["fxb"] = effect[r.colorChromeFxBlue] ?? 0
+        if let w = wb.first(where: { $0.value == r.wb })?.key { c["wb"] = w }
+        if r.wb == "Kelvin", let k = r.wbKelvin { c["kelvin"] = k }
+        c["dr"] = ["Auto": 0, "DR100": 1, "DR200": 2, "DR400": 3][r.dynamicRange] ?? 1
+        c["hi"] = Int(((r.highlight + 2) * 2).rounded())
+        c["sh"] = Int(((r.shadow + 2) * 2).rounded())
+        if let col = r.color, !r.isMonochrome { c["color"] = 7 - col }
+        c["sharp"] = 4 - r.sharpness
+        c["nr"] = r.highIsoNr + 4
+        c["clarity"] = r.clarity + 6
+        return c
+    }
+
+    /// A copy of `file` with `settings` in FS slot `slot` (0-based) and the checksum moved by the same byte delta.
+    /// Returns the new file and the recipe fields left as they are on the camera.
+    public static func patch(_ file: Data, slot: Int, settings: RecipeSettings, model: String) throws -> (Data, [String]) {
+        guard let l = layout(model: model), file.count == l.size, file.prefix(8) == Data("FUJIFILM".utf8) else {
+            throw CameraError("No known settings-file layout for the \(model), or the file doesn't fit it.")
+        }
+        guard (0..<l.slots).contains(slot) else { throw CameraError("FS\(slot + 1) doesn't exist on the \(model).") }
+        var b = [UInt8](file)
+        var delta = 0
+        for (key, value) in codes(settings) {
+            guard let f = l.fields[key] else { continue }
+            let o = f.offset + slot * f.step
+            if key == "kelvin" {
+                let lo = value & 0xFF, hi = (value >> 8) & 0xFF
+                delta += lo + hi - Int(b[o]) - Int(b[o + 1])
+                b[o] = UInt8(lo); b[o + 1] = UInt8(hi)
+            } else {
+                guard (0...255).contains(value) else { throw CameraError("\(key) can't be stored (\(value)).") }
+                delta += value - Int(b[o]); b[o] = UInt8(value)
+            }
+        }
+        let stored = Int(b[0x120]) | Int(b[0x121]) << 8
+        let sum = (stored + delta) & 0xFFFF
+        b[0x120] = UInt8(sum & 0xFF); b[0x121] = UInt8(sum >> 8)
+        var kept = ["wb_red", "wb_blue", "mono_warm_cool", "mono_magenta_green"]
+        if settings.dRangePriority != "Off" { kept.append("d_range_priority") }
+        if films.first(where: { $0.value == settings.film }) == nil { kept.append("film") }
+        return (Data(b), kept)
+    }
 
     public static func layout(model: String) -> Layout? {
         model.uppercased().filter { $0.isLetter || $0.isNumber }.replacingOccurrences(of: "FUJIFILM", with: "") == "XE5" ? xe5 : nil

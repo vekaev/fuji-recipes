@@ -136,6 +136,16 @@ public final class ImageCaptureTransport: NSObject, PTPTransport, ICCameraDevice
         }
     }
 
+    public func resetSession() async {
+        await gate.enter()
+        defer { Task { await gate.leave() } }
+        guard device.hasOpenSession else { return }
+        let _: Error? = await withCheckedContinuation { cont in
+            DispatchQueue.main.async { self.device.requestCloseSession(options: [:]) { cont.resume(returning: $0) } }
+        }
+        for _ in 0..<20 where device.hasOpenSession { try? await Task.sleep(nanoseconds: 100_000_000) }
+    }
+
     // ICCameraDeviceDelegate / ICDeviceDelegate: nothing to do here; the browser tracks arrival and removal.
     public func device(_ device: ICDevice, didCloseSessionWithError error: Error?) {}
     public func didRemove(_ device: ICDevice) {}

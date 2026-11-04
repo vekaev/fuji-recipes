@@ -24,3 +24,12 @@ the Mac app closed. Files kept in `~/Documents/FujiRecipes/backups/fs-test-2026-
 So: the restore path and the delta checksum work on the X-E5 through ImageCaptureCore. Still unverified: the WB shift
 and monochrome WC/MG offsets (they decode 0/0 where the owner's photos say otherwise). Map them by having the owner set
 a known shift on FS3 on the camera and diffing two reads. Until then FS writes leave those fields alone.
+
+## Shipped, 2026-11-04
+
+`FujiCamera.writeDialSlot` (download → `SettingsFile.patch` → fresh session → restore → fresh session → read back and
+compare, ignoring the camera's bookkeeping bytes) is the one FS write path, used by the app and by
+`fuji_plan_write` / `fuji_apply_write` (slots "FS1"…"FS3"). Checked on the owner's X-E5 in one process, as the app runs
+it: FS3 Sharpness 0 → +1 changed exactly that byte; writing 0 back left the file identical apart from bookkeeping.
+Before every FS write the whole settings file is saved in `backups/` (`…-settings-before-fsN.dat`). WB shift, mono
+WC/MG and D-Range Priority are left as set on the camera until their offsets are mapped.

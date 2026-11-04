@@ -5,7 +5,7 @@ which one you're shooting with. Menu names are from Fujifilm's X-E5 manual.
 
 | | Where | How many | Picked with | This app |
 |---|---|---|---|---|
-| **FS1–FS3** | the film simulation dial | 3 | turning the dial to FS1 / FS2 / FS3 | reads them; writing: not yet |
+| **FS1–FS3** | the film simulation dial | 3 | turning the dial to FS1 / FS2 / FS3 | reads and writes them (WB shift and B&W toning stay as set on the camera for now) |
 | **C1–C7** (CUSTOM 1–7) | the IMAGE QUALITY SETTING menu | 7 | the Q button, dial on **C** | reads and writes them |
 
 ## The one rule: the dial wins
@@ -60,7 +60,8 @@ filter for ACROS / MONOCHROME), and turn **FS RECIPE** on to keep the other imag
 per position. Then the dial position *is* the recipe: no menu needed.
 
 Over USB these three live in the camera's settings file, not in the slot properties: this app reads them
-(`fuji slots`), and writing them is not supported yet.
+(`fuji slots`) and writes them by sending the file back with only that position changed (a copy of the whole file is
+saved first). The WB shift and B&W toning of an FS position aren't written yet: set those on the camera.
 
 ## Which to use
 

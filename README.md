@@ -41,7 +41,8 @@ by how it looks, not by its numbers, so the photos come first and the settings s
   On the Mac and a wide iPad the camera's slots sit beside it: drag a look onto a slot.
 - **The camera** (beside the recipes on Mac / iPad, its own tab on iPhone): C1–C7 and the dial's FS1–FS3 with the look in each. A slot shows since when it holds that look, when
   you last shot with it, looks to swap in, and its history, so you can put the old one back. Changes are staged and
-  written in one go after a review: a backup of every slot first, a read-back after. FS1–FS3 are read only for now.
+  written right away: a backup first, a read-back after, Undo in the message. FS1–FS3 (the film simulation dial) are
+  written too, through the camera's settings file; their WB shift and B&W toning stay as set on the camera for now.
 - **Add recipes**: paste or drop Instagram / TikTok / YouTube links (many at once) or Instagram's saved-posts export.
   Claude reads the reels on the Mac (`/recipe`, `fuji_inbox`), and you keep or skip each one here.
 - No camera yet: a step-by-step guide to the camera's USB mode, with a live connection check.

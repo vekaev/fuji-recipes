@@ -169,7 +169,7 @@ struct LookCard: View {
     @ViewBuilder private var menuItems: some View {
         Menu("Put in") {
             if model.connected {
-                ForEach(model.slots.filter { !$0.dial }) { s in
+                ForEach(model.slots) { s in
                     Button(s.id + (s.unused && !s.changed ? " (empty)" : " · " + (s.name.isEmpty ? s.draft.film : s.name))) { model.put(recipe, in: s.id) }
                 }
             } else {
@@ -209,7 +209,7 @@ struct SlotColumn: View {
                     VStack(spacing: 6) {
                         ForEach(model.slots.filter { !$0.dial }) { SlotDropRow(slot: $0) }
                         if model.slots.contains(where: \.dial) {
-                            HStack { SectionTitle(text: "Film simulation dial · read only"); Spacer() }.padding(.top, 6)
+                            HStack { SectionTitle(text: "Film simulation dial"); Spacer() }.padding(.top, 6)
                             ForEach(model.slots.filter(\.dial)) { SlotDropRow(slot: $0) }
                         }
                     }
@@ -256,14 +256,13 @@ struct SlotDropRow: View {
                 .stroke(slot.changed || targeted ? Theme.ink : (empty ? Color.primary.opacity(0.22) : Theme.line),
                         style: StrokeStyle(lineWidth: slot.changed || targeted ? 2 : 1, dash: empty && !targeted ? [4, 3] : []))
         }
-        .opacity(slot.dial ? 0.7 : 1)
         .contentShape(Rectangle())
         .onTapGesture { model.openSlot(slot.id) }
         .pointer()
         .dropDestination(for: String.self) { items, _ in
-            guard !slot.dial, let slug = items.first, let r = model.recipe(slug) else { return false }
+            guard let slug = items.first, let r = model.recipe(slug) else { return false }
             model.put(r, in: slot.id)
             return true
-        } isTargeted: { targeted = $0 && !slot.dial }
+        } isTargeted: { targeted = $0 }
     }
 }

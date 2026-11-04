@@ -112,6 +112,52 @@ final class SettingsFileTests: XCTestCase {
         XCTAssertEqual(s.sharpness, -2); XCTAssertEqual(s.highIsoNr, -4); XCTAssertEqual(s.clarity, 0)
         XCTAssertNil(SettingsFile.dialSlots(d, model: "X-T5"))
     }
+
+    /// Writing FS slots: every writable field round-trips through the reader, other slots and other bytes stay, and
+    /// the checksum at 0x120 moves by exactly the byte delta (the rule the X-E5 accepted on 2026-11-04).
+    func testPatchRoundTripsAndKeepsTheChecksumRule() throws {
+        var d = Data("FUJIFILM".utf8) + Data(count: SettingsFile.xe5.size - 8)
+        for (_, f) in SettingsFile.xe5.fields { for i in 0..<3 { d[f.offset + i * f.step] = 4 } }
+        d[0x120] = 0x34; d[0x121] = 0x12
+        let fs2Before = try XCTUnwrap(SettingsFile.dialSlots(d, model: "X-E5"))[1].settings
+        var r = RecipeSettings()
+        r.film = "Nostalgic Neg."; r.grainRoughness = "Weak"; r.grainSize = "Large"; r.colorChrome = "Strong"; r.colorChromeFxBlue = "Off"
+        r.wb = "Kelvin"; r.wbKelvin = 6500; r.dynamicRange = "DR400"; r.highlight = -0.5; r.shadow = 2.5; r.color = 4
+        r.sharpness = -1; r.highIsoNr = -4; r.clarity = -3
+        r.normalize()
+        let (out, kept) = try SettingsFile.patch(d, slot: 2, settings: r, model: "X-E5")
+        let read = try XCTUnwrap(SettingsFile.dialSlots(out, model: "X-E5"))
+        let fs3 = read[2].settings
+        XCTAssertEqual(fs3.film, r.film); XCTAssertEqual(fs3.grainRoughness, "Weak"); XCTAssertEqual(fs3.grainSize, "Large")
+        XCTAssertEqual(fs3.colorChrome, "Strong"); XCTAssertEqual(fs3.colorChromeFxBlue, "Off")
+        XCTAssertEqual(fs3.wb, "Kelvin"); XCTAssertEqual(fs3.wbKelvin, 6500); XCTAssertEqual(fs3.dynamicRange, "DR400")
+        XCTAssertEqual(fs3.highlight, -0.5); XCTAssertEqual(fs3.shadow, 2.5); XCTAssertEqual(fs3.color, 4)
+        XCTAssertEqual(fs3.sharpness, -1); XCTAssertEqual(fs3.highIsoNr, -4); XCTAssertEqual(fs3.clarity, -3)
+        XCTAssertEqual(read[1].settings, fs2Before)
+        XCTAssertTrue(kept.contains("wb_red"))
+        // Checksum: stored + sum of byte deltas, outside 0x120…0x121.
+        let a = [UInt8](d), b = [UInt8](out)
+        var delta = 0
+        for i in 0..<a.count where i != 0x120 && i != 0x121 { delta += Int(b[i]) - Int(a[i]) }
+        XCTAssertEqual(Int(b[0x120]) | Int(b[0x121]) << 8, (0x1234 + delta) & 0xFFFF)
+        XCTAssertThrowsError(try SettingsFile.patch(d, slot: 3, settings: r, model: "X-E5"))
+        XCTAssertThrowsError(try SettingsFile.patch(d.prefix(100), slot: 0, settings: r, model: "X-E5"))
+    }
+
+    /// The exact change made on the owner's X-E5 in the supervised test: FS3 Sharpness 0 → +1 is one byte and checksum −1.
+    func testSupervisedTestPatch() throws {
+        var d = Data("FUJIFILM".utf8) + Data(count: SettingsFile.xe5.size - 8)
+        for (_, f) in SettingsFile.xe5.fields { for i in 0..<3 { d[f.offset + i * f.step] = 4 } }
+        d[0x120] = 4; d[0x121] = 192
+        var s = try XCTUnwrap(SettingsFile.dialSlots(d, model: "X-E5"))[2].settings
+        let (same, _) = try SettingsFile.patch(d, slot: 2, settings: s, model: "X-E5")
+        s.sharpness += 1
+        let (out, _) = try SettingsFile.patch(same, slot: 2, settings: s, model: "X-E5")
+        let diff = (0..<out.count).filter { out[$0] != same[$0] }
+        XCTAssertEqual(diff, [0x120, 34760])
+        XCTAssertEqual(out[34760], same[34760] - 1)
+        XCTAssertEqual(out[0x120], same[0x120] - 1)
+    }
 }
 
 final class InboxAndHistoryTests: XCTestCase {

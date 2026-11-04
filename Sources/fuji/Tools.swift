@@ -102,7 +102,7 @@ final class Tools: @unchecked Sendable {
          "annotations": ["readOnlyHint": false, "destructiveHint": false]],
         ["name": "fuji_plan_write", "description": """
          Prepare writing recipes to the camera's custom slots WITHOUT writing; returns a plan id and a preview of every change (slot, old → new, field by field) to show the user. Operations:
-         • {slot: "C3", recipe: "<slug or name>", name?: "<slot name, ≤25 ASCII>"} — a library recipe into a slot
+         • {slot: "C3" or "FS1"…"FS3", recipe: "<slug or name>", name?: "<slot name, ≤25 ASCII, C slots only>"} — a library recipe into a slot (FS1–FS3: the film simulation dial, X-E5)
          • {slot: "C3", settings: {…}, name: "…"} — settings not in the library
          • {kit: "<kit>"} — every slot of a kit
          • {restore: "<backup file or latest>", slots?: ["C1", "C2"]} — put slots back from a backup
@@ -208,7 +208,7 @@ final class Tools: @unchecked Sendable {
                          "canReadWriteSlots": mode.canWriteSlots, "simulated": Cameras.shared.simulate]
         if mode.canWriteSlots {
             out["slots"] = try await cam.bankCount()
-            out["note"] = "The camera's menu is locked while it's connected in this mode. FS1–FS3 on a film simulation dial can't be written over USB; the dial overrides a slot's film simulation unless it's set to C."
+            out["note"] = "The camera's menu is locked while it's connected in this mode. FS1–FS3 on the film simulation dial are written through the camera's settings file (fuji_plan_write slot \"FS1\"…\"FS3\"; WB shift and B&W toning stay as set on the camera). The dial overrides a C slot's film simulation unless it's set to C."
         } else {
             out["advice"] = "The camera is in \(mode.label) mode, where its custom slots can't be reached. \(USBMode.howToSet)"
         }
@@ -224,12 +224,12 @@ final class Tools: @unchecked Sendable {
             if let r = library.match(b.settings) { o["recipe"] = r.slug; o["recipeName"] = r.name }
             return o
         }
-        // Film simulation dial (X-E5): FS1–FS3 live only in the camera's settings file. Read-only.
+        // Film simulation dial (X-E5): FS1–FS3 live only in the camera's settings file; written through it (ADR 0004).
         let info = try await cam.deviceInfo()
         if SettingsFile.layout(model: info.model) != nil, let file = try? await cam.downloadSettingsBackup(),
            let dial = SettingsFile.dialSlots(file, model: info.model) {
             out += dial.map { d -> JSON in
-                var o: JSON = ["slot": d.slot, "readOnly": true, "summary": d.settings.summary, "settings": plain(d.settings),
+                var o: JSON = ["slot": d.slot, "dial": true, "summary": d.settings.summary, "settings": plain(d.settings),
                                "unverified": d.unverified]
                 if let r = library.match(d.settings) { o["recipe"] = r.slug; o["recipeName"] = r.name }
                 return o
@@ -336,9 +336,13 @@ final class Tools: @unchecked Sendable {
         guard mode.canWriteSlots else { throw ToolError("The camera is in \(mode.label). Set it to \(USBMode.rawConvBackupRestore.label) and plug it in again.") }
         let count = try await cam.bankCount()
         var writes: [Plan.Write] = []
+        // C1…Cn are 1…n; FS1…FS3 (film simulation dial, settings file) are 101…103.
+        let dialSlots = SettingsFile.layout(model: info.model)?.slots ?? 0
         func slotIndex(_ s: String) throws -> Int {
-            guard let n = Int(s.uppercased().dropFirst()), s.uppercased().hasPrefix("C"), (1...count).contains(n) else {
-                throw ToolError("\(s) isn't a slot on the \(info.model) (C1…C\(count)).")
+            let u = s.uppercased()
+            if u.hasPrefix("FS"), let n = Int(u.dropFirst(2)), (1...max(1, dialSlots)).contains(n), dialSlots > 0 { return 100 + n }
+            guard let n = Int(u.dropFirst()), u.hasPrefix("C"), (1...count).contains(n) else {
+                throw ToolError("\(s) isn't a slot on the \(info.model) (C1…C\(count)\(dialSlots > 0 ? ", FS1…FS\(dialSlots)" : "")).")
             }
             return n
         }
@@ -370,7 +374,15 @@ final class Tools: @unchecked Sendable {
             } else { throw ToolError("Each operation needs slot, kit or restore.") }
         }
         var preview: [String] = []
-        for w in writes {
+        var dialNow: [SettingsFile.DialSlot]?
+        for w in writes where w.slot > 100 {
+            if dialNow == nil { dialNow = SettingsFile.dialSlots(try await cam.downloadSettingsBackup(), model: info.model) }
+            guard let cur = dialNow?[w.slot - 101] else { throw ToolError("Couldn't read FS\(w.slot - 100) from the camera's settings file.") }
+            let diffs = cur.settings.differences(to: w.settings)
+            preview.append("FS\(w.slot - 100) \(cur.settings.film) → \(w.label)" + (diffs.isEmpty ? ": already the same, nothing to write" : "\n    " + diffs.joined(separator: "\n    ")) +
+                           "\n    (WB shift and B&W toning stay as set on the camera; FS positions have no name)")
+        }
+        for w in writes where w.slot < 100 {
             let current = try await cam.readBank(w.slot)
             let name = PTPString.bankName(w.name.isEmpty && !w.exactName ? current.name : w.name)
             var diffs = current.settings.differences(to: w.settings)
@@ -378,7 +390,7 @@ final class Tools: @unchecked Sendable {
             preview.append("C\(w.slot) \(current.name.isEmpty ? "(unnamed)" : current.name) → \(w.label)" +
                            (diffs.isEmpty ? ": already the same, nothing to write" : "\n    " + diffs.joined(separator: "\n    ")))
         }
-        preview.append("A backup of all \(count) slots is saved first. Each slot is read back after writing.")
+        preview.append("A backup of all \(count) slots is saved first\(writes.contains { $0.slot > 100 } ? ", plus the camera's whole settings file before FS writes" : ""). Each slot is read back after writing.")
         let plan = Plan(id: String(UUID().uuidString.prefix(8)).lowercased(), created: Date(), cameraSerial: info.serial,
                         writes: writes, preview: preview)
         plans[plan.id] = plan
@@ -392,14 +404,23 @@ final class Tools: @unchecked Sendable {
         let cam = try await Cameras.shared.require()
         let info = try await cam.deviceInfo()
         guard info.serial == plan.cameraSerial else { throw ToolError("A different camera is connected than when the plan was made. Prepare it again.") }
-        let backupURL = try await backup(reason: "Before writing \(plan.writes.map { "C\($0.slot)" }.joined(separator: ", "))")
+        let backupURL = try await backup(reason: "Before writing \(plan.writes.map { $0.slot > 100 ? "FS\($0.slot - 100)" : "C\($0.slot)" }.joined(separator: ", "))")
         var reports: [Any] = []
-        for w in plan.writes {
+        for w in plan.writes where w.slot < 100 {
             let report = try await cam.writeBank(w.slot, settings: w.settings, name: w.name.isEmpty && !w.exactName ? nil : w.name)
             library.recordWrite(info, slot: "C\(w.slot)", name: report.name, settings: report.after, how: w.exactName ? "put back" : "written")
             var o = plain(report) as? JSON ?? [:]
             o["ok"] = report.ok
             reports.append(o)
+        }
+        for w in plan.writes where w.slot > 100 {
+            let (report, prior) = try await cam.writeDialSlot(w.slot - 101, settings: w.settings)
+            let dir = library.root.appendingPathComponent("backups")
+            let stamp = Date().isoStamp.prefix(19).replacingOccurrences(of: ":", with: "")
+            try? prior.write(to: dir.appendingPathComponent("\(stamp)-\(Recipe.slugify(info.model))-settings-before-fs\(w.slot - 100).dat"))
+            library.recordWrite(info, slot: report.slot, name: "", settings: report.after, how: w.exactName ? "put back" : "written")
+            reports.append(["slot": report.slot, "ok": report.ok, "after": report.after.summary, "mismatches": report.mismatches,
+                            "keptAsOnCamera": report.kept, "unexpectedBytes": report.unexpected] as JSON)
         }
         plans[id] = nil
         return ["backup": backupURL.path, "slots": reports,

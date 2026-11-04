@@ -15,7 +15,7 @@ struct CameraView: View {
             HStack(spacing: 0) {
                 SlotList().frame(width: 300).background(Theme.card).overlay(alignment: .trailing) { Theme.line.frame(width: 1) }
                 SlotDetail().frame(maxWidth: .infinity)
-                if model.editing, let s = model.slot, !s.dial {
+                if model.editing, model.slot != nil {
                     SlotEditor().frame(width: 290).background(Theme.card)
                         .overlay(alignment: .leading) { Theme.line.frame(width: 1) }
                         .transition(.move(edge: .trailing))
@@ -73,10 +73,10 @@ private struct SlotList: View {
             content(s)
                 .background(model.selectedSlot == s.id ? Theme.raised : .clear, in: RoundedRectangle(cornerRadius: 12))
                 .contentShape(Rectangle())
-                .onTapGesture { model.selectedSlot = s.id; if s.dial { model.editing = false } }
+                .onTapGesture { model.selectedSlot = s.id }
                 .pointer()
                 .dropDestination(for: String.self) { items, _ in
-                    guard !s.dial, let r = model.recipe(items.first) else { return false }
+                    guard let r = model.recipe(items.first) else { return false }
                     model.put(r, in: s.id); return true
                 }
         } else {
@@ -131,8 +131,7 @@ struct SlotDetail: View {
                             InkHeadline(text: "\(s.id.lowercased()): \((s.unused && !s.changed) ? "empty" : (r?.name ?? (s.name.isEmpty ? s.draft.film : s.name)).lowercased()).", size: regular ? 34 : 28)
                             Text(subtitle(s, r, hist)).font(.system(size: 14)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                             HStack(spacing: 14) {
-                                if !s.dial { Button(model.editing ? "Hide settings" : "Settings ›") { model.editing.toggle() }.buttonStyle(.plain).pointer() }
-                                else { Button("Settings ›") { model.editing = false; model.settingsFor = nil; model.sheet = .settings }.buttonStyle(.plain).pointer() }
+                                Button(model.editing ? "Hide settings" : "Settings ›") { model.editing.toggle() }.buttonStyle(.plain).pointer()
                                 if s.changed && model.askBeforeWriting { Button("Revert") { model.revert(s.id) }.buttonStyle(.plain).pointer() }
                                 Button("How to shoot with it") { model.sheet = .help }.buttonStyle(.plain).pointer().foregroundStyle(.secondary)
                             }
@@ -147,9 +146,10 @@ struct SlotDetail: View {
                         }
                     }
                     if s.dial {
-                        Text("Set on the camera's dial: \(s.id) is read from the camera's settings file. Writing it comes after a test on your camera (you'll watch it).")
-                            .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    } else {
+                        Text("Turn the dial to \(s.id) to shoot with it. Written through the camera's settings file; its WB shift and B&W toning stay as set on the camera for now.")
+                            .font(.system(size: 12.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                    Group {
                         SectionTitle(text: "Swap in · \(model.askBeforeWriting ? "" : "written right away · ")what's there now moves to \(s.id)'s history")
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: regular ? 4 : 2), spacing: 12) {
                             ForEach(model.recipes.filter { $0.settings != s.draft }.prefix(regular ? 8 : 6), id: \.slug) { pick($0, slot: s) }
@@ -165,7 +165,7 @@ struct SlotDetail: View {
                                         Text(span(rec)).font(.system(size: 12.5)).foregroundStyle(.secondary)
                                     }
                                     Spacer()
-                                    if rec.to != nil && !s.dial { Pill(title: "Put back", primary: false) { model.putBack(rec) }.fixedSize().scaleEffect(0.85) }
+                                    if rec.to != nil { Pill(title: "Put back", primary: false) { model.putBack(rec) }.fixedSize().scaleEffect(0.85) }
                                 }
                                 .padding(.vertical, 6)
                                 .overlay(alignment: .bottom) { Theme.line.frame(height: 1) }
@@ -225,7 +225,7 @@ struct SlotSheet: View {
     var body: some View {
         HStack(spacing: 0) {
             SlotDetail()
-            if model.editing, let s = model.slot, !s.dial {
+            if model.editing, model.slot != nil {
                 SlotEditor().frame(width: 290).background(Theme.card)
                     .overlay(alignment: .leading) { Theme.line.frame(width: 1) }
                     .transition(.move(edge: .trailing))

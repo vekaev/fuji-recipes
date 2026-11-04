@@ -49,8 +49,9 @@ Decisions and why: `docs/adr/`. Words: `GLOSSARY.md`. Research: `docs/research/b
   "now → new" review. The app's only write path is `AppModel.writeChanges`.
 - Claude never writes on its own: MCP stays `fuji_plan_write` → the owner approves the preview → `fuji_apply_write`.
 - Every write records what the slot held in the slot history (`history/`), so nothing is lost: "Put back" restores it.
-- FS1–FS3 writing and whole-settings-file restores stay off until a supervised test on the owner's X-E5 passes
-  (ADR 0004). Never write a slot to verify something; test with `--simulate` / `SimulatedCamera`.
+- FS1–FS3 are written only through `FujiCamera.writeDialSlot` (ADR 0004: supervised test passed 2026-11-04): whole
+  settings file saved first, patched, restored in a fresh session, read back and compared. WB shift and mono WC/MG
+  are left as set on the camera until mapped. `fuji settings-restore` (whole file) is for supervised use only. Never write a slot to verify something; test with `--simulate` / `SimulatedCamera`.
 - Looks are real or absent: camera-rendered scenes, the owner's photos, the creator's frames, else "not rendered
   yet". No colour-filter imitations in the app.
 

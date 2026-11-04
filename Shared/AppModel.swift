@@ -15,12 +15,12 @@ final class AppModel {
     struct Slot: Identifiable, Equatable {
         let id: String           // "C1" … "C7", "FS1" … "FS3"
         let index: Int
-        let dial: Bool           // FS1–FS3: read only until ADR 0004's test
+        let dial: Bool           // FS1–FS3: written through the settings file (ADR 0004)
         var camName: String
         var cam: RecipeSettings
         var name: String
         var draft: RecipeSettings
-        var changed: Bool { !dial && (draft != cam || name != camName) }
+        var changed: Bool { draft != cam || (!dial && name != camName) }
         var unused: Bool { cam == RecipeSettings.factory && camName.isEmpty }
     }
 
@@ -250,7 +250,7 @@ final class AppModel {
     var slot: Slot? { slots.first { $0.id == selectedSlot } }
 
     func update(_ id: String? = nil, _ change: (inout Slot) -> Void) {
-        guard let i = slots.firstIndex(where: { $0.id == (id ?? selectedSlot) }), !slots[i].dial else { return }
+        guard let i = slots.firstIndex(where: { $0.id == (id ?? selectedSlot) }) else { return }
         change(&slots[i])
         slots[i].draft.normalize()
         if slots[i].changed { scheduleWrite(after: 0.8) }   // dial edits: once the dragging stops
@@ -270,7 +270,6 @@ final class AppModel {
     /// Stage a recipe in a slot (drag onto it, or pick it). Nothing reaches the camera until Review & write.
     func put(_ r: Recipe, in slotID: String) {
         guard let s = slots.first(where: { $0.id == slotID }) else { return }
-        if s.dial { say("\(slotID) is set on the camera's dial; writing it comes after a test on your camera"); return }
         update(slotID) { $0.draft = r.settings; $0.name = PTPString.bankName(r.name.uppercased()) }
         selectedSlot = slotID
         if askBeforeWriting { say("\(r.name) → \(slotID) · not on the camera yet") } else { scheduleWrite(after: 0) }
@@ -292,6 +291,14 @@ final class AppModel {
         sheet = .slot
     }
 
+    /// The whole settings file as it was before an FS write: the way back if anything looks wrong.
+    func saveSettingsFile(_ data: Data, model: String, reason: String) {
+        let dir = library.root.appendingPathComponent("backups")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let stamp = Date().isoStamp.prefix(19).replacingOccurrences(of: ":", with: "")
+        try? data.write(to: dir.appendingPathComponent("\(stamp)-\(Recipe.slugify(model))-settings-\(reason.lowercased()).dat"))
+    }
+
     func freeSlot() -> String? { slots.first { !$0.dial && $0.unused && !$0.changed }?.id ?? slots.first { !$0.dial }?.id }
 
     /// Each changed slot: back it up (read from the camera), write what differs, read back, record in history.
@@ -307,10 +314,25 @@ final class AppModel {
         do {
             let i = try await cam.deviceInfo()
             var old: [Bank] = []
-            for s in todo { old.append(try await cam.readBank(s.index)) }
-            _ = try library.saveBackup(Snapshot(date: Date().isoStamp, reason: "Before writing \(todo.map(\.id).joined(separator: ", "))", camera: i, banks: old))
+            for s in todo where !s.dial { old.append(try await cam.readBank(s.index)) }
+            if !old.isEmpty { _ = try library.saveBackup(Snapshot(date: Date().isoStamp, reason: "Before writing \(todo.map(\.id).joined(separator: ", "))", camera: i, banks: old)) }
             var problems: [String] = []
-            for s in todo {
+            var keptOnCamera: [String] = []
+            // C slots first (properties), then FS1–FS3 (settings file, each in fresh sessions).
+            for s in todo.sorted(by: { !$0.dial && $1.dial }) {
+                if s.dial {
+                    let (report, prior) = try await cam.writeDialSlot(s.index - 1, settings: s.draft)
+                    saveSettingsFile(prior, model: i.model, reason: "before-\(s.id)")
+                    library.recordWrite(i, slot: s.id, name: "", settings: report.after)
+                    if let k = slots.firstIndex(where: { $0.id == s.id }) {
+                        slots[k].cam = report.after
+                        if slots[k].draft == s.draft { slots[k].draft = report.after }
+                    }
+                    if s.draft.wbRed != report.after.wbRed || s.draft.wbBlue != report.after.wbBlue { keptOnCamera.append("\(s.id) WB shift") }
+                    if s.draft.isMonochrome && (s.draft.monoWarmCool != report.after.monoWarmCool || s.draft.monoMagentaGreen != report.after.monoMagentaGreen) { keptOnCamera.append("\(s.id) toning") }
+                    if !report.ok { problems += report.mismatches.map { "\(s.id) \($0)" } + (report.unexpected > 0 ? ["\(s.id): \(report.unexpected) other bytes changed"] : []) }
+                    continue
+                }
                 let report = try await cam.writeBank(s.index, settings: s.draft, name: s.name)
                 library.recordWrite(i, slot: s.id, name: report.name, settings: report.after)
                 if let k = slots.firstIndex(where: { $0.id == s.id }) {
@@ -324,12 +346,13 @@ final class AppModel {
             refreshHistory()
             backupCount = library.backups().count
             let what = todo.map { "\(match($0.draft)?.name ?? ($0.name.isEmpty ? $0.draft.film : $0.name.capitalized)) in \($0.id)" }.joined(separator: ", ")
+            let note = keptOnCamera.isEmpty ? "" : " · \(keptOnCamera.joined(separator: ", ")) stays as set on the camera"
             if !problems.isEmpty {
                 say("Written with differences: \(problems.joined(separator: "; "))")
             } else if askBeforeWriting {
                 say("Wrote \(todo.map(\.id).joined(separator: ", ")) · read back OK · to shoot: dial on C, Q, pick the slot")
             } else {
-                say("\(what) · on the camera", action: ToastAction(title: "Undo") { [weak self] in
+                say("\(what) · on the camera\(note)", action: ToastAction(title: "Undo") { [weak self] in
                     guard let self else { return }
                     for b in before { self.update(b.id) { $0.draft = b.settings; $0.name = b.name } }
                     self.scheduleWrite(after: 0)

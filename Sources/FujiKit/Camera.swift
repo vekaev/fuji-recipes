@@ -41,6 +41,23 @@ public struct PTPResult: Sendable {
 public protocol PTPTransport: AnyObject, Sendable {
     var displayName: String { get }
     func send(_ op: UInt16, _ params: [UInt32], data: Data?) async throws -> PTPResult
+    /// Close the PTP session so the next command opens a fresh one (the camera refuses a settings restore in a session
+    /// that already downloaded the file).
+    func resetSession() async
+}
+
+extension PTPTransport {
+    public func resetSession() async {}
+}
+
+/// What a write to FS1–FS3 did, read back from the camera.
+public struct DialWriteReport: Sendable {
+    public var slot: String
+    public var after: RecipeSettings
+    public var kept: [String]          // recipe fields left as they are on the camera (not mapped yet)
+    public var mismatches: [String]    // "field: wanted → camera has"
+    public var unexpected: Int         // other bytes the camera changed beyond its own bookkeeping
+    public var ok: Bool { mismatches.isEmpty && unexpected == 0 }
 }
 
 public struct CameraError: Error, CustomStringConvertible, Sendable {
@@ -265,6 +282,35 @@ public actor FujiCamera {
         guard r1.ok else { throw CameraError("SendObjectInfo: \(PTPCode.describe(r1.code))") }
         let r2 = try await transport.send(0x100D, [], data: data)
         guard r2.ok else { throw CameraError("SendObject: \(PTPCode.describe(r2.code))") }
+    }
+
+    /// Writes a recipe into FS1–FS3 (`slot` 0-based) through the settings file: download, patch, restore in a fresh
+    /// session, read back in another, and compare. Returns the file as it was before (keep it: it's the undo).
+    public func writeDialSlot(_ slot: Int, settings: RecipeSettings) async throws -> (report: DialWriteReport, before: Data) {
+        let info = try await deviceInfo()
+        let before = try await downloadSettingsBackup()
+        let (target, kept) = try SettingsFile.patch(before, slot: slot, settings: settings, model: info.model)
+        let id = "FS\(slot + 1)"
+        if target == before, let cur = SettingsFile.dialSlots(before, model: info.model)?[slot] {
+            return (DialWriteReport(slot: id, after: cur.settings, kept: kept, mismatches: [], unexpected: 0), before)
+        }
+        await transport.resetSession()
+        try await restoreSettingsFile(target)
+        await transport.resetSession()
+        let after = try await downloadSettingsBackup()
+        guard let read = SettingsFile.dialSlots(after, model: info.model)?[slot] else {
+            throw CameraError("Wrote \(id), but couldn't read the settings file back. The previous file is saved in Backups.")
+        }
+        let t = [UInt8](target), a = [UInt8](after)
+        let unexpected = (0..<min(t.count, a.count)).filter { t[$0] != a[$0] && !SettingsFile.volatile.contains($0) }.count
+        // Compare only what the patch wrote: the fields it leaves alone come from what the camera has.
+        var wanted = settings
+        wanted.wbRed = read.settings.wbRed; wanted.wbBlue = read.settings.wbBlue
+        wanted.monoWarmCool = read.settings.monoWarmCool; wanted.monoMagentaGreen = read.settings.monoMagentaGreen
+        wanted.dRangePriority = read.settings.dRangePriority
+        wanted.normalize()
+        let mismatches = wanted.differences(to: read.settings)
+        return (DialWriteReport(slot: id, after: read.settings, kept: kept, mismatches: mismatches, unexpected: unexpected), before)
     }
 
     public func downloadSettingsBackup() async throws -> Data {

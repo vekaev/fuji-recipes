@@ -29,7 +29,7 @@ struct FujiRecipesApp: App {
                 Button("Check Connection") { Task { await model.check() } }.keyboardShortcut("r")
                 Button("How to Connect…") { model.sheet = .connect }.disabled(model.connected)
                 Button("Settings of This Slot") { model.openSlot(model.selectedSlot, editing: true) }.keyboardShortcut("e", modifiers: [])
-                    .disabled(!model.connected || model.slot?.dial != false)
+                    .disabled(!model.connected || model.slot == nil)
                 Toggle("Ask Before Writing", isOn: $model.askBeforeWriting)
                 Button("Review Changes…") { model.sheet = .review }.keyboardShortcut(.return, modifiers: .command)
                     .disabled(model.changes.isEmpty || !model.askBeforeWriting)

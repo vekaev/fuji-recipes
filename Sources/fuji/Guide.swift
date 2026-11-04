@@ -17,7 +17,7 @@ enum Guide {
 
     Camera rules
     • DR200 needs ISO ≥ 2× base and DR400 ≥ 4× base (on the X-E5 DR400 needs ISO 640+); D-Range Priority on locks DR and tone; mono films refuse Color, colour films refuse mono toning; Clarity is refused when the slot shoots HEIF.
-    • Bodies with a film simulation dial (X-E5, X-T50, X-M5, X-T30 III): the dial overrides the slot's film unless it's on C. FS1–FS3 can't be written over USB.
+    • Bodies with a film simulation dial (X-E5, X-T50, X-M5, X-T30 III): the dial overrides the slot's film unless it's on C. On the X-E5, FS1–FS3 are written through the camera's settings file (WB shift and B&W toning stay as set on the camera).
     • Supported for slot writes: X-T5, X-H2, X-H2S, X100VI, X-T50, X-E5, X-S20, X-M5, X-S10, X-T30 II, GFX100S, GFX100 II, GFX100RF; X100V partly. Not: X-T3, X-T30 and older (no slot properties), X-Pro3 (fails). X-T4, X-E4: untested.
     • USB mode must be USB RAW CONV./BACKUP RESTORE; the camera's menu is locked while connected.
 

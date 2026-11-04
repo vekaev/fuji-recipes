@@ -13,8 +13,13 @@ struct SlotEditor: View {
         if let s = model.slot {
             VStack(spacing: 0) {
                 HStack(spacing: 6) {
-                    TextField("Slot name", text: Binding(get: { s.name }, set: { v in model.update { $0.name = PTPString.bankName(v) } }))
-                        .textFieldStyle(.plain).font(.system(size: 12.5, weight: .semibold))
+                    if s.dial {
+                        Text("\(s.id) · film simulation dial").font(.system(size: 12.5, weight: .semibold))   // FS positions have no name
+                        Spacer()
+                    } else {
+                        TextField("Slot name", text: Binding(get: { s.name }, set: { v in model.update { $0.name = PTPString.bankName(v) } }))
+                            .textFieldStyle(.plain).font(.system(size: 12.5, weight: .semibold))
+                    }
                     Button { model.editing = false } label: { Image(systemName: "xmark").font(.system(size: 11)) }
                         .buttonStyle(.plain).pointer().foregroundStyle(.secondary).help("Close (Esc)")
                 }
