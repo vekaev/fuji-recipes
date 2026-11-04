@@ -36,9 +36,15 @@ fuji mine               # the recipes you actually shot with (your JPEGs' EXIF; 
 fuji --simulate slots   # try everything against a simulated X-E5
 ```
 
-On the camera (X-E5 wording, from Fujifilm's manual): **MENU/OK ▸ network/USB tab ▸ CONNECTION MODE ▸ USB RAW
-CONV./BACKUP RESTORE**, and **USB POWER SUPPLY/COMM SETTING ▸ AUTO** (POWER SUPPLY ON/COMM OFF blocks data). Switch
-the camera off, connect a USB-C data cable, switch it on. In the default card-reader mode the camera answers only a handful of properties (`fuji probe` shows them). The camera's menu is locked while it's connected in that mode.
+### Plug in your camera
+
+The camera must be in **USB RAW CONV./BACKUP RESTORE** mode; out of the box it's a card reader, which shows only
+your photos.
+
+1. On the camera, once: **MENU/OK ▸ network/USB tab ▸ CONNECTION MODE ▸ USB RAW CONV./BACKUP RESTORE**.
+2. Same tab, once: **USB POWER SUPPLY/COMM SETTING ▸ AUTO**.
+3. Every time: **camera off ▸ USB-C data cable into the Mac ▸ camera on**.
+4. Check: `fuji doctor`, or ask Claude "is my camera connected?".
 
 **New to this?** [Connect your Fujifilm](docs/CONNECT.md) (the USB mode, step by step, and `fuji doctor` when it
 doesn't work) · [Use C1–C7 and FS1–FS3](docs/USING-SLOTS.md) (the dial decides which one you shoot with).

@@ -15,3 +15,24 @@ Fujifilm custom slots (C1–C7) over USB + a recipe library, for the owner and t
   photo pane with chips and an info card, 280 pt editor with tick dials). Mockup:
   docs/mockup/index.html (sample photos are local only, gitignored).
 - Protocol notes and sources: docs/research/notes/opensource-protocol.md; the research brief is docs/research/brief.md.
+
+## Connecting the camera (tell the owner exactly this)
+
+Full guide: docs/CONNECT.md. The camera is reachable only in **USB RAW CONV./BACKUP RESTORE** mode; the factory
+default **USB CARD READER** shows the photos, not the settings.
+
+- **Once, on the camera (X-E5 wording):** MENU/OK ▸ network/USB tab ▸ CONNECTION MODE ▸ USB RAW CONV./BACKUP
+  RESTORE, and on the same tab USB POWER SUPPLY/COMM SETTING ▸ AUTO (POWER SUPPLY ON/COMM OFF blocks data).
+  Older bodies: SET UP ▸ CONNECTION SETTING ▸ PC CONNECTION MODE.
+- **Every time:** camera off ▸ USB-C *data* cable straight into the Mac ▸ camera on. The mode is chosen when the
+  cable goes in, so after changing it, reconnect with the camera off. The camera's menu is locked while connected;
+  unplug to shoot.
+- **Check:** `fuji doctor` (MCP: `fuji_doctor`) — five steps USB → camera → session → mode → slots, stops at the
+  first failure with its fix. Then `fuji slots`. Preview / Photos offering to import = still a card reader; quit them.
+- **The owner's X-E5 (fw 1.12)** needed *both* settings plus camera off → plug → on before step 4 passed
+  (2026-11-04). Card reader: 5 properties advertised. RAW CONV.: 61, C1–C7 readable.
+- **MCP:** Claude Code (user scope, via scripts/install.sh) and the Claude desktop app
+  (claude_desktop_config.json `mcpServers.fuji`, restart Claude after editing) both run `fuji mcp`. Each app starts
+  its own server, so avoid driving the camera from both at once.
+- **Using the slots on the camera:** docs/USING-SLOTS.md. The film simulation dial wins: a custom setting's film
+  applies only with the dial on C (dial on C ▸ Q ▸ SELECT CUSTOM SETTING ▸ C1–C7).
