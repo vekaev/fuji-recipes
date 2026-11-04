@@ -179,7 +179,7 @@ struct SlotColumn: View {
         VStack(alignment: .leading, spacing: 8) {
             InkHeadline(text: model.connected ? (model.info?.model.lowercased() ?? "camera") + "." : "camera.", size: 30)
             if model.connected {
-                Text("Drop a look on a slot. Dial on C, then Q to pick it.").font(.system(size: 12.5)).foregroundStyle(.secondary)
+                Text("Drop a look on a slot, click one for its history and settings. On the camera: dial on C, then Q.").font(.system(size: 12.5)).foregroundStyle(.secondary)
                 ScrollView {
                     VStack(spacing: 6) {
                         ForEach(model.slots.filter { !$0.dial }) { SlotDropRow(slot: $0) }
@@ -194,7 +194,7 @@ struct SlotColumn: View {
                 }
             } else {
                 Text("Plug in your Fujifilm to drop looks on its slots.").font(.system(size: 12.5)).foregroundStyle(.secondary)
-                Button("How to connect") { model.tab = .camera }.buttonStyle(.plain).pointer().font(.system(size: 13, weight: .semibold)).padding(.top, 4)
+                Button("How to connect") { model.sheet = .connect }.buttonStyle(.plain).pointer().font(.system(size: 13, weight: .semibold)).padding(.top, 4)
                 Spacer()
             }
         }
@@ -233,7 +233,7 @@ struct SlotDropRow: View {
         }
         .opacity(slot.dial ? 0.7 : 1)
         .contentShape(Rectangle())
-        .onTapGesture { model.selectedSlot = slot.id; model.tab = .camera }
+        .onTapGesture { model.openSlot(slot.id) }
         .pointer()
         .dropDestination(for: String.self) { items, _ in
             guard !slot.dial, let slug = items.first, let r = model.recipe(slug) else { return false }

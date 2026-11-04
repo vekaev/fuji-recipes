@@ -83,10 +83,11 @@ Shared with `/recipe` and `fuji mcp`: field names in skills/fuji-recipes/referen
 | Edit a recipe: name, description, status, tags, creator + link (slug and photos stay; settings read only) | ✓ click anywhere on the card (photos open the preview), Edit ›, right-click "Edit…"; Save / Cancel | ✓ tap anywhere on the card (photos open the preview), Edit › | `fuji_edit_recipe`, `fuji_tag` |
 | Photo tiles: fixed size from width + ratio, every photo fills (portrait cropped; the preview shows it whole) | ✓ | ✓ | — |
 | Fast photos: thumbnails decoded in parallel, kept as small JPEGs in Caches/thumbs (keyed by path, size, date, pixels) | ✓ | ✓ | — |
+| One top bar: window buttons re-centred in the 38 pt bar beside the tabs (`TrafficLights` in App/MacSupport.swift) | ✓ | n/a (no window buttons) | — |
 | Modals: click outside or Esc closes (the recipe page keeps its edits; Cancel discards) | ✓ own overlay, not a system sheet | ✓ system sheet, swipe down keeps edits | — |
 | Pointing-hand cursor on everything clickable (`.pointer()`; every `.buttonStyle(.plain)`, pills, chips, photos, rows, menus) | ✓ | iPad pointer: hover lift | — |
 | Click/tap an image → preview, arrows / swipe between images and recipes | ✓ (Space / Esc) | ✓ (tap, swipe) | — |
-| Camera page: slots with looks, selected slot's history, swap in, review "now → new", write | ✓ drag a look onto a slot or pick | ✓ tap a slot, pick a look | `fuji_slots`, `fuji_plan_write` / `fuji_apply_write` |
+| Slots: Mac / wide iPad have two tabs (Looks, Inbox); the slot column beside the looks takes drops, a click opens the slot's page as a modal (photos, since / last used, swap in, history + Put back, Settings › dials). iPhone keeps a Camera tab (no room for a column). No camera: "Connect camera" in the top bar opens the guide as a modal | ✓ drag onto a slot, click a slot | ✓ Camera tab: tap a slot, pick a look; iPad regular = Mac | `fuji_slots`, `fuji_plan_write` / `fuji_apply_write` |
 | Instant writes: drop / Put in / Put back / dial edits go straight to the camera (slot backup, read-back, Undo in the toast); "Ask before writing" setting brings the review back | ✓ (Settings, ⋯, Camera menu, Camera page) | ✓ (Camera page toggle; ⋯ on iPad) | plan → approve → apply (unchanged) |
 | Slot history + Put back | ✓ | ✓ | `fuji_slot_history` |
 | Inbox: paste/drop links, Instagram export, Keep/Skip | ✓ (drop, paste) | ✓ (paste; share extension: later) | `fuji_inbox`, `fuji_inbox_add`, `fuji_inbox_resolve` |

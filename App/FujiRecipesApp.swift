@@ -9,6 +9,7 @@ struct FujiRecipesApp: App {
     var body: some Scene {
         Window("Fuji Recipes", id: "main") {
             RootView()
+                .background(WindowAccessor { TrafficLights.attach($0) })
                 .environment(model)
                 .frame(minWidth: 960, minHeight: 600)
                 .preferredColorScheme(appearance.colorScheme)
@@ -19,12 +20,12 @@ struct FujiRecipesApp: App {
         .commands {
             CommandGroup(after: .sidebar) {
                 Button("Looks") { model.tab = .looks }.keyboardShortcut("1")
-                Button("Camera") { model.tab = .camera }.keyboardShortcut("2")
-                Button("Inbox") { model.tab = .inbox }.keyboardShortcut("3")
+                Button("Inbox") { model.tab = .inbox }.keyboardShortcut("2")
             }
             CommandMenu("Camera") {
                 Button("Check Connection") { Task { await model.check() } }.keyboardShortcut("r")
-                Button("Settings of This Slot") { model.tab = .camera; model.editing.toggle() }.keyboardShortcut("e", modifiers: [])
+                Button("How to Connect…") { model.sheet = .connect }.disabled(model.connected)
+                Button("Settings of This Slot") { model.openSlot(model.selectedSlot, editing: true) }.keyboardShortcut("e", modifiers: [])
                     .disabled(!model.connected || model.slot?.dial != false)
                 Toggle("Ask Before Writing", isOn: $model.askBeforeWriting)
                 Button("Review Changes…") { model.sheet = .review }.keyboardShortcut(.return, modifiers: .command)

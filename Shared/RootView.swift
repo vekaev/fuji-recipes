@@ -20,6 +20,9 @@ struct RootView: View {
                     TopBar()
                     page(model.tab).frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
+                #if os(macOS)
+                .ignoresSafeArea(.container, edges: .top)   // the bar takes the title bar's place (window buttons inside)
+                #endif
             } else {
                 TabView(selection: $model.tab) {
                     page(.looks).tabItem { Label("Looks", systemImage: "square.grid.2x2") }.tag(AppModel.Tab.looks)
@@ -85,13 +88,15 @@ struct RootView: View {
         case .backups: BackupsSheet()
         case .review: ReviewSheet()
         case .settings: RecipeSettingsSheet()
+        case .slot: SlotSheet()
+        case .connect: SetupView().sheetSize(920, 640)
         }
     }
 
     @ViewBuilder private func page(_ t: AppModel.Tab) -> some View {
         switch t {
         case .looks: LooksView()
-        case .camera: CameraView()
+        case .camera: if regular { LooksView() } else { CameraView() }   // Mac / iPad: slots live beside the looks
         case .inbox: InboxView()
         }
     }
@@ -108,12 +113,6 @@ private struct TopBar: View {
     var body: some View {
         HStack(spacing: 2) {
             tab(.looks) { Text("Looks") }
-            tab(.camera) {
-                HStack(spacing: 6) {
-                    Circle().frame(width: 6, height: 6).opacity(model.connected ? 0.9 : 0.25)
-                    Text(model.connected ? (model.info?.model ?? "Camera") + (Cameras.shared.simulate ? " (simulated)" : "") : model.busy != nil ? "Reading…" : "Camera")
-                }
-            }
             tab(.inbox) {
                 HStack(spacing: 4) {
                     Text("Inbox")
@@ -121,6 +120,16 @@ private struct TopBar: View {
                 }
             }
             Spacer(minLength: 8)
+            Button { if !model.connected { model.sheet = .connect } } label: {
+                HStack(spacing: 6) {
+                    Circle().frame(width: 6, height: 6).opacity(model.connected ? 0.9 : 0.25)
+                    Text(model.connected ? (model.info?.model ?? "Camera") + (Cameras.shared.simulate ? " (simulated)" : "")
+                         : model.busy != nil ? "Reading…" : "Connect camera")
+                }
+                .font(.system(size: 12, weight: .medium)).foregroundStyle(model.connected ? Theme.ink : .secondary)
+                .padding(.horizontal, 10).frame(height: 26)
+            }
+            .buttonStyle(.plain).pointer().disabled(model.connected)
             Text(status).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle).monospacedDigit()
             Menu {
                 Button("How to Use C1–C7 and FS1–FS3…") { model.sheet = .help }

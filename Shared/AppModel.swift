@@ -10,7 +10,7 @@ import SwiftUI
 @MainActor @Observable
 final class AppModel {
     enum Tab: String, CaseIterable, Identifiable { case looks, camera, inbox; var id: String { rawValue } }
-    enum Sheet: String, Identifiable { case help, trouble, backups, review, settings; var id: String { rawValue } }
+    enum Sheet: String, Identifiable { case help, trouble, backups, review, settings, slot, connect; var id: String { rawValue } }
 
     struct Slot: Identifiable, Equatable {
         let id: String           // "C1" … "C7", "FS1" … "FS3"
@@ -122,6 +122,7 @@ final class AppModel {
         if ready, !connected { await readCamera() }
         if !ready, info != nil {
             info = nil; slots = []; editing = false
+            if sheet == .slot { sheet = nil }
             say("Camera disconnected")
         }
     }
@@ -145,6 +146,7 @@ final class AppModel {
             refreshHistory()
             backupCount = library.backups().count
             if !slots.contains(where: { $0.id == selectedSlot }) { selectedSlot = slots.first?.id ?? "C1" }
+            if sheet == .connect { sheet = nil }
             say("\(i.model) · \(banks.count) slots and the dial read · backup saved")
         } catch {
             say("Couldn't read the camera: \(error)")
@@ -274,6 +276,13 @@ final class AppModel {
 
     func revert(_ id: String) { update(id) { $0.draft = $0.cam; $0.name = $0.camName } }
     func revertAll() { for s in changes { revert(s.id) } }
+
+    /// Mac / wide iPad: a slot's page opens over the looks (its photos, history, Put back, the dials).
+    func openSlot(_ id: String, editing: Bool = false) {
+        selectedSlot = id
+        self.editing = editing
+        sheet = .slot
+    }
 
     func freeSlot() -> String? { slots.first { !$0.dial && $0.unused && !$0.changed }?.id ?? slots.first { !$0.dial }?.id }
 

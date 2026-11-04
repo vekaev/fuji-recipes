@@ -217,3 +217,29 @@ struct SlotDetail: View {
         .buttonStyle(.plain).pointer()
     }
 }
+
+/// Mac / wide iPad: a slot's page over the looks (click a slot in the column). Its settings dials open beside it.
+struct SlotSheet: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        HStack(spacing: 0) {
+            SlotDetail()
+            if model.editing, let s = model.slot, !s.dial {
+                SlotEditor().frame(width: 290).background(Theme.card)
+                    .overlay(alignment: .leading) { Theme.line.frame(width: 1) }
+                    .transition(.move(edge: .trailing))
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            Button { model.closeSheet() } label: {
+                Image(systemName: "xmark").font(.system(size: 12, weight: .medium)).frame(width: 30, height: 30)
+            }
+            .buttonStyle(.plain).pointer().foregroundStyle(.secondary).padding(8).help("Close (Esc)")
+            .opacity(model.editing ? 0 : 1)
+        }
+        .animation(.easeOut(duration: 0.18), value: model.editing)
+        .sheetSize(model.editing ? 940 : 680, 640)
+        .onDisappear { model.editing = false }
+    }
+}
