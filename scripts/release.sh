@@ -66,7 +66,7 @@ if [[ -n "$LOCAL" ]]; then
 fi
 
 git add Sources/fuji/main.swift
-git commit -q -m "Release $VERSION"
+git diff --cached --quiet || git commit -q -m "Release $VERSION"   # already at this version: just tag
 git tag "$TAG"
 git push -q origin main "$TAG"
 gh release create "$TAG" "dist/$TAR" "dist/$TAR.sha256" --repo "$REPO" --latest --title "Fuji Recipes $VERSION" --notes-file "$NOTES"
