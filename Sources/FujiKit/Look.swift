@@ -620,13 +620,18 @@ extension LookMatch {
     /// The research loop's fixed evaluation (research/program.md). dev: the library's own photos, each guessed with
     /// its recipe left out. heldOut: every reference set's photos (other photographers, other scenes), guessed from the
     /// library alone, so a change that only memorises the library doesn't count.
-    public static func score(_ library: Library) -> (dev: Evaluation, heldOut: Evaluation) {
+    public static func score(_ library: Library) -> (dev: Evaluation, heldOut: Evaluation, sets: [(String, Evaluation)]) {
         let index = LookIndex.load(library)
         let mine = (try? library.recipes()) ?? []
-        let all = mine + LookIndex.referenceRecipes(library)
+        let refs = LookIndex.referenceRecipes(library)
+        let all = mine + refs
         let dev = evaluate(index: index, recipes: mine)
         let held = evaluate(index: index, recipes: all, testOn: { $0.status == "reference" }, trainOn: { $0.status != "reference" })
-        return (dev, held)
+        let names = Array(Set(refs.compactMap { $0.source?.creator })).sorted()
+        let sets = names.map { name in
+            (name, evaluate(index: index, recipes: all, testOn: { $0.status == "reference" && $0.source?.creator == name }, trainOn: { $0.status != "reference" }))
+        }
+        return (dev, held, sets)
     }
 
     static let family: [String: String] = ["Classic Neg.": "warm negative", "Nostalgic Neg.": "warm negative",

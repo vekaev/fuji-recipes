@@ -107,6 +107,20 @@ func cli() -> Int32 {
         var args: [String: Any] = ["raw": raw, "full": rest.contains("--full")]
         if !names.isEmpty { args["recipes"] = Array(names) }
         return runTool("fuji_render", args)
+    case "exif-set":
+        // Developer aid: Fuji JPEGs in a folder → a labelled set (JSON lines {name, url, settings, samples}) for
+        // fuji match --learn, up to N photos per recipe, evenly spread. fuji exif-set <folder> [N]
+        guard let folder = rest.first else { print("Usage: fuji exif-set <folder> [per recipe]"); return 2 }
+        let per = rest.count > 1 ? Int(rest[1]) ?? 30 : 30
+        do {
+            for g in try ExifImport.groups(files: ExifImport.files(in: [folder])) {
+                let files = g.files.sorted()
+                let take = stride(from: 0, to: files.count, by: max(1, files.count / per)).prefix(per).map { files[$0] }
+                let obj: [String: Any] = ["name": g.settings.summary, "settings": (try? JSONSerialization.jsonObject(with: Library.encoder.encode(g.settings))) ?? [:], "samples": take]
+                if let d = try? JSONSerialization.data(withJSONObject: obj) { print(String(decoding: d, as: UTF8.self)) }
+            }
+            return 0
+        } catch { return fail(error) }
     case "look-stats":
         // Developer aid: the measured look of each file, one JSON line each (for calibrating Match a look).
         for f in rest {
@@ -116,17 +130,80 @@ func cli() -> Int32 {
         return 0
     case "match":
         // fuji match <photo> [file.raf] [--budget N] [--save "Name"]: Match a look from the terminal.
-        let plainArgs = rest.enumerated().filter { i, v in !v.hasPrefix("--") && !(i > 0 && ["--budget", "--save", "--learn", "--name", "--cases", "--seed"].contains(rest[i - 1])) }.map(\.element)
+        let plainArgs = rest.enumerated().filter { i, v in !v.hasPrefix("--") && !(i > 0 && ["--budget", "--save", "--learn", "--name", "--cases", "--seed", "--real", "--out"].contains(rest[i - 1])) }.map(\.element)
         if let i = rest.firstIndex(of: "--learn"), i + 1 < rest.count {
             var args: [String: Any] = ["learn": rest[i + 1]]
             if let j = rest.firstIndex(of: "--name"), j + 1 < rest.count { args["name"] = rest[j + 1] }
             return runTool("fuji_match_look", args)
         }
+        if let i = rest.firstIndex(of: "--real"), i + 1 < rest.count {
+            // fuji match --real <folder> [--cases N] [--budget N] [--out file.json]: the real benchmark. Pairs of the
+            // owner's JPEG + RAF; the JPEG's recipe (EXIF) is hidden, its look is the reference, the camera develops the
+            // RAF, and the search has to find the recipe again. Also renders the true recipe once (the noise floor).
+            let folder = (rest[i + 1] as NSString).expandingTildeInPath
+            let n = rest.firstIndex(of: "--cases").flatMap { $0 + 1 < rest.count ? Int(rest[$0 + 1]) : nil } ?? 8
+            let budget = rest.firstIndex(of: "--budget").flatMap { $0 + 1 < rest.count ? Int(rest[$0 + 1]) : nil } ?? 60
+            let outFile = rest.firstIndex(of: "--out").flatMap { $0 + 1 < rest.count ? rest[$0 + 1] : nil }
+            let r = blocking { () async throws -> String in
+                func log(_ s: String) { FileHandle.standardError.write(Data((s + "\n").utf8)) }
+                let groups = try ExifImport.groups(files: ExifImport.files(in: [folder]))
+                    .filter { g in g.files.contains { FileManager.default.fileExists(atPath: ($0 as NSString).deletingPathExtension + ".RAF") } }
+                    .sorted { $0.files.count > $1.files.count }
+                guard !groups.isEmpty else { throw CameraError("No JPEG + RAF pairs with a readable recipe in \(folder).") }
+                // Spread the cases over the recipes (round robin), and over each recipe's shots (evenly spaced).
+                var picks: [(String, RecipeSettings)] = []
+                var round = 0
+                while picks.count < n && round < 50 {
+                    for g in groups where picks.count < n {
+                        let withRaw = g.files.filter { FileManager.default.fileExists(atPath: ($0 as NSString).deletingPathExtension + ".RAF") }.sorted()
+                        let per = max(1, (n + groups.count - 1) / groups.count)
+                        guard round < min(per, withRaw.count) else { continue }
+                        picks.append((withRaw[(round * withRaw.count) / per], g.settings))
+                    }
+                    round += 1
+                }
+                let library = Library()
+                let index = LookIndex.load(library)
+                let recipes = (try? library.recipes()) ?? []
+                let cam = try await Cameras.shared.require()
+                var rows: [[String: Any]] = []
+                var recovered = 0, filmRight = 0, matchSum = 0, floorSum = 0
+                for (k, (jpeg, truth)) in picks.enumerated() {
+                    let raf = (jpeg as NSString).deletingPathExtension + ".RAF"
+                    let t0 = Date()
+                    let reference = try LookStats.measure(file: URL(fileURLWithPath: jpeg))
+                    let base = try await cam.uploadRAF(try Data(contentsOf: URL(fileURLWithPath: raf)))
+                    let floorRender = try await cam.render(truth, base: base)
+                    let floor = try LookStats.measure(data: floorRender.jpeg).match(to: reference)
+                    let guess = LookMatch.firstGuess(reference, index: index, recipes: recipes).settings
+                    let found = try await LookMatch.refine(reference: reference, start: guess, budget: budget) { try await cam.render($0, base: base).jpeg }
+                    guard let best = found.first else { continue }
+                    let f = best.settings
+                    let close = (f.film == truth.film || (f.isMonochrome && truth.isMonochrome))
+                        && (f.isMonochrome ? abs((f.monoWarmCool ?? 0) - (truth.monoWarmCool ?? 0)) <= 1
+                            : abs(f.wbRed - truth.wbRed) <= 1 && abs(f.wbBlue - truth.wbBlue) <= 1 && abs((f.color ?? 0) - (truth.color ?? 0)) <= 1)
+                        && abs(f.highlight - truth.highlight) <= 1 && abs(f.shadow - truth.shadow) <= 1
+                    recovered += close ? 1 : 0; filmRight += f.film == truth.film ? 1 : 0; matchSum += best.match; floorSum += floor
+                    let secs = Int(Date().timeIntervalSince(t0))
+                    log("\(k + 1)/\(picks.count) \((jpeg as NSString).lastPathComponent) \(close ? "✓" : "✗") found \(best.match)% (true recipe renders \(floor)%) in \(secs) s\n   true:  \(truth.summary)\n   found: \(f.summary)\n   guess: \(guess.summary)")
+                    rows.append(["photo": jpeg, "truth": truth.summary, "found": f.summary, "guess": guess.summary, "match": best.match,
+                                 "trueRecipeMatch": floor, "recovered": close, "film": f.film == truth.film, "seconds": secs])
+                }
+                let c = max(1, rows.count)
+                let summary = "\(rows.count) of your photos: recipe recovered \(recovered), film right \(filmRight); mean match \(matchSum / c)% (the true recipe itself renders \(floorSum / c)%)."
+                if let outFile, let d = try? JSONSerialization.data(withJSONObject: ["summary": summary, "cases": rows], options: [.prettyPrinted]) {
+                    try? d.write(to: URL(fileURLWithPath: (outFile as NSString).expandingTildeInPath))
+                }
+                return summary
+            }
+            switch r { case .success(let s): print(s); return 0; case .failure(let e): return fail(e) }
+        }
         if rest.contains("--score") {
             // fuji match --score: the research loop's fixed evaluation, one line (research/program.md).
-            let (dev, held) = LookMatch.score(Library())
+            let (dev, held, sets) = LookMatch.score(Library())
             func r(_ x: Double) -> String { String(format: "%.1f", x) }
             print("dev \(r(dev.score)) held-out \(r(held.score)) | dev film \(Int(dev.film * 100))% family \(Int(dev.family * 100))% wb \(r(dev.wbRed))/\(r(dev.wbBlue)) tone \(r(dev.highlight))/\(r(dev.shadow)) color \(r(dev.color)) top3 \(Int(dev.recognisedTop3 * 100))% | held film \(Int(held.film * 100))% family \(Int(held.family * 100))% wb \(r(held.wbRed))/\(r(held.wbBlue)) tone \(r(held.highlight))/\(r(held.shadow)) color \(r(held.color)) | \(dev.photos)+\(held.photos) photos")
+            for (name, e) in sets { print("  \(name): \(r(e.score)) | film \(Int(e.film * 100))% family \(Int(e.family * 100))% wb \(r(e.wbRed))/\(r(e.wbBlue)) tone \(r(e.highlight))/\(r(e.shadow)) color \(r(e.color)) | \(e.photos) photos") }
             return 0
         }
         if rest.contains("--benchmark") {
