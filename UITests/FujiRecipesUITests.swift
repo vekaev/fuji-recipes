@@ -71,4 +71,27 @@ final class FujiRecipesUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["toast"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'UITEST2'")).firstMatch.waitForExistence(timeout: 5))
     }
+
+    /// Match a look: the reference photo is read, the library suggests a first guess, the (simulated) camera searches,
+    /// and the closest result is saved as a to-try recipe that then shows up in Recipes.
+    func testMatchALook() {
+        tab(1)   // let the simulated camera connect first
+        XCTAssertTrue(app.buttons["slot.C1"].waitForExistence(timeout: 15))
+        tab(2)
+        let mode = app.buttons["studio.mode.look"]
+        XCTAssertTrue(mode.waitForExistence(timeout: 5))
+        mode.tap()
+        XCTAssertTrue(app.staticTexts["look.referenceName"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["look.guess"].waitForExistence(timeout: 20), "a first guess appears without the camera")
+        let refine = app.buttons["look.refine"]
+        XCTAssertTrue(refine.waitForExistence(timeout: 5))
+        refine.tap()
+        let save = app.buttons["look.save.0"]
+        XCTAssertTrue(save.waitForExistence(timeout: 90), "the camera search finishes with results")
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS '% match'")).firstMatch.exists)
+        save.tap()
+        XCTAssertTrue(app.buttons["look.save.0.done"].waitForExistence(timeout: 5), "saved")
+        tab(0)
+        XCTAssertTrue(app.staticTexts["Look of Leica street"].waitForExistence(timeout: 5), "the saved look is in the library")
+    }
 }

@@ -30,6 +30,8 @@ public final class SimulatedCamera: PTPTransport, @unchecked Sendable {
     private var nextHandle: UInt32 = 0x1000
     public var asShotDR = 200
     public private(set) var renders = 0
+    /// Objects (finished renders) still on the camera: a render job must delete what it made.
+    public var objectCount: Int { lock.withLock { objects.count } }
 
     public init(model: String = "X-E5", banks: Int = 7, seed: [Int: (String, RecipeSettings)] = SimulatedCamera.defaultSeed) {
         displayName = model
@@ -197,24 +199,88 @@ public final class SimulatedCamera: PTPTransport, @unchecked Sendable {
         return PTPCode.ok
     }
 
-    /// A small JPEG whose colour comes from the profile (film, colour, WB shift): different recipes, different images.
+    /// A small JPEG of a made-up scene (a grey ramp, a sky, six colour patches) developed with the profile: the film
+    /// sets saturation and a tint, Color scales saturation, the WB shift scales red and blue, Highlight / Shadow bend
+    /// the tone curve, B&W films go grey with their toning. Not Fujifilm's rendering: just enough that every setting
+    /// changes the image the way it would, so the Studio and Match a look can be tested without a camera.
     public static func renderJPEG(_ p: ConversionProfile, full: Bool) -> Data {
-        let w = full ? 96 : 64, h = full ? 64 : 48
-        let film = Int(p[8]), mono = Film.isMonochrome(Film.all[max(0, min(19, film - 1))])
-        let base = Double(film) / 20
-        var r = 0.25 + base * 0.5 + Double(p[13]) / 40, g = 0.5 - base * 0.2 + Double(p[18]) / 200, b = 0.4 + Double(p[14]) / 40
-        if mono { let l = (r + g + b) / 3; r = l; g = l; b = l }
-        let px = [UInt8](repeating: 0, count: w * h * 4).enumerated().map { i, _ -> UInt8 in
-            switch i % 4 { case 0: return UInt8(max(0, min(255, r * 255))); case 1: return UInt8(max(0, min(255, g * 255)))
-                           case 2: return UInt8(max(0, min(255, b * 255))); default: return 255 }
+        let w = full ? 180 : 120, h = full ? 120 : 80
+        let filmName = Film.all[max(0, min(Film.all.count - 1, Int(p[8]) - 1))]
+        let mono = Film.isMonochrome(filmName)
+        // Per film: saturation, warm tint (b), magenta tint (a), contrast.
+        let look: [String: (Double, Double, Double, Double)] = [
+            "Provia": (1.0, 0, 0, 1.0), "Velvia": (1.35, 0.01, 0.01, 1.12), "Astia": (0.95, 0.01, 0.01, 0.92),
+            "Classic Chrome": (0.7, 0.02, -0.01, 1.1), "Reala Ace": (0.98, 0, 0, 1.02), "Pro Neg. Std": (0.78, 0, 0, 0.88),
+            "Pro Neg. Hi": (0.85, 0, 0, 1.0), "Classic Neg.": (0.85, 0.03, -0.02, 1.15), "Nostalgic Neg.": (0.92, 0.05, 0.02, 0.95),
+            "Eterna": (0.6, -0.01, 0, 0.8), "Eterna Bleach Bypass": (0.35, 0, 0, 1.25)]
+        let (sat0, warm, magenta, contrast) = look[filmName] ?? (1, 0, 0, 1)
+        // Each film's own colour character: hue turn (degrees) and saturation for red, orange, yellow, green, cyan, blue.
+        let character: [String: [(Double, Double)]] = [
+            "Provia": [(0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1)],
+            "Velvia": [(-4, 1.25), (0, 1.1), (4, 1.15), (6, 1.3), (0, 1.1), (-6, 1.2)],
+            "Astia": [(4, 0.9), (2, 1.05), (0, 0.95), (0, 0.9), (0, 1.05), (4, 1.05)],
+            "Classic Chrome": [(8, 0.75), (-4, 0.8), (-8, 0.7), (-10, 0.7), (10, 0.9), (-14, 0.95)],
+            "Reala Ace": [(0, 1.05), (-2, 1.0), (0, 1.0), (4, 0.95), (0, 1.0), (2, 1.05)],
+            "Pro Neg. Std": [(4, 0.85), (4, 0.95), (0, 0.85), (-4, 0.85), (0, 0.9), (0, 0.9)],
+            "Pro Neg. Hi": [(2, 1.0), (2, 1.0), (0, 0.95), (-2, 0.95), (0, 1.0), (0, 1.0)],
+            "Classic Neg.": [(-10, 1.1), (-4, 0.95), (-12, 0.8), (20, 0.85), (-8, 1.0), (-10, 0.9)],
+            "Nostalgic Neg.": [(6, 1.0), (6, 1.15), (6, 1.1), (-6, 0.8), (6, 0.8), (-6, 0.8)],
+            "Eterna": [(0, 0.8), (0, 0.85), (-6, 0.75), (8, 0.7), (6, 0.85), (6, 0.8)],
+            "Eterna Bleach Bypass": [(0, 0.6), (0, 0.6), (0, 0.55), (0, 0.5), (0, 0.6), (0, 0.6)]]
+        let twist = character[filmName] ?? Array(repeating: (0, 1), count: 6)
+        let sat = sat0 * (1 + Double(p[18]) / 10 / 8)
+        let gainR = 1 + Double(p[13]) * 0.025, gainB = 1 + Double(p[14]) * 0.03
+        let hi = Double(p[16]) / 10, sh = Double(p[17]) / 10
+        let wc = Double(p[23]) / 10, mg = Double(p[26]) / 10
+        func curve(_ x: Double) -> Double {
+            var y = 0.5 + (x - 0.5) * contrast
+            y += hi * 0.045 * max(0, x - 0.45) / 0.55          // + brightens highlights
+            y -= sh * 0.045 * max(0, 0.55 - x) / 0.55          // + deepens shadows
+            return min(1, max(0, y))
+        }
+        let patches: [(Double, Double, Double)] = [(0.8, 0.2, 0.2), (0.85, 0.5, 0.25), (0.85, 0.8, 0.3), (0.3, 0.65, 0.3), (0.25, 0.65, 0.7), (0.2, 0.3, 0.75)]
+        var px = [UInt8](repeating: 255, count: w * h * 4)
+        for y in 0..<h {
+            for x in 0..<w {
+                var (r, g, b): (Double, Double, Double)
+                let fx = Double(x) / Double(w - 1), fy = Double(y) / Double(h - 1)
+                if fy < 0.3 { (r, g, b) = (0.45 + 0.2 * fy, 0.6 + 0.2 * fy, 0.85) }                       // sky
+                else if fy < 0.65 { (r, g, b) = patches[min(5, Int(fx * 6))] }                             // colours
+                else { let v = 0.04 + 0.92 * fx; (r, g, b) = (v, v, v) }                                    // grey ramp
+                // the film's hue character, saturation around luminance, film tint, white balance shift
+                let l = 0.2126 * r + 0.7152 * g + 0.0722 * b
+                var (cr, cg, cb) = (r - l, g - l, b - l)
+                let hue = (atan2(cb - (cr + cg) / 2, cr - cg) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360)
+                let sector = min(5, Int(hue / 60))
+                let (turn, boost) = twist[sector]
+                let t = turn * .pi / 180, c0 = cos(t), s0 = sin(t)   // rotate around the grey axis (in the r–g / b plane)
+                let u = cr - cg, v = cb - (cr + cg) / 2
+                let u2 = (u * c0 - v * s0) * boost, v2 = (u * s0 + v * c0) * boost
+                // back from (u, v) with the luminance kept: cr − cg = u2, cb − (cr + cg)/2 = v2, 0.2126cr + 0.7152cg + 0.0722cb = 0
+                let m = (cr + cg) / 2 * boost
+                cr = m + u2 / 2; cg = m - u2 / 2; cb = v2 + m
+                let dl = 0.2126 * cr + 0.7152 * cg + 0.0722 * cb
+                (cr, cg, cb) = (cr - dl, cg - dl, cb - dl)
+                r = l + cr * sat + warm + magenta; g = l + cg * sat - magenta * 0.5; b = l + cb * sat - warm
+                r *= gainR; b *= gainB
+                r = curve(r); g = curve(g); b = curve(b)
+                if mono {
+                    let m = 0.2126 * r + 0.7152 * g + 0.0722 * b
+                    r = m + wc * 0.006 + mg * 0.004; g = m - mg * 0.006; b = m - wc * 0.006 + mg * 0.004
+                }
+                let i = (y * w + x) * 4
+                px[i] = UInt8(max(0, min(255, r * 255))); px[i + 1] = UInt8(max(0, min(255, g * 255))); px[i + 2] = UInt8(max(0, min(255, b * 255)))
+            }
         }
         guard let provider = CGDataProvider(data: Data(px) as CFData),
               let cg = CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4,
-                               space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+                               space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+                               bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
                                provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent) else { return Data() }
         let out = NSMutableData()
         guard let dest = CGImageDestinationCreateWithData(out, "public.jpeg" as CFString, 1, nil) else { return Data() }
-        CGImageDestinationAddImage(dest, cg, nil); CGImageDestinationFinalize(dest)
+        CGImageDestinationAddImage(dest, cg, [kCGImageDestinationLossyCompressionQuality: 0.95] as CFDictionary)
+        CGImageDestinationFinalize(dest)
         return out as Data
     }
 

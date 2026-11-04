@@ -57,6 +57,15 @@ final class Tools: @unchecked Sendable {
                                                           "full": ["type": "boolean", "description": "Full resolution (slower); default a 640-px preview"]],
                          "required": ["raw"]],
          "annotations": ["readOnlyHint": false, "destructiveHint": false]],
+        ["name": "fuji_match_look", "description": "Match a look: from any reference photo (a Leica shot, a paid recipe's sample, a screenshot), propose a recipe that reproduces its tone, colour cast and saturation. Without raw: a first guess from the photo alone. With raw (one of the owner's .RAF files, same camera model, ideally a similar scene and light) and the camera connected: the camera develops the RAW with candidate recipes (budget renders, ~2 s each; film simulation first, then WB shift, tone, colour) and the three closest looks come back with a match % and the render's path. save: a name to keep the best as a to-try recipe. Doesn't change any slot or setting.",
+         "inputSchema": ["type": "object", "properties": ["image": ["type": "string", "description": "Path to the reference photo"],
+                                                          "raw": ["type": "string", "description": "Path to a .RAF to develop on the camera (optional)"],
+                                                          "budget": ["type": "integer", "description": "Camera renders to spend, default 60"],
+                                                          "save": ["type": "string", "description": "Name for the best result, saved as a to-try recipe"],
+                                                          "evaluate": ["type": "boolean", "description": "Instead: report how accurate the first guess is on the library's (and reference sets') sample photos"],
+                                                          "learn": ["type": "string", "description": "Instead: import a labelled reference set (JSON lines of {name, url, settings, samples}) into looks/<set>/ for evaluation and future training; guesses don't use it (it made them worse)"],
+                                                          "name": ["type": "string", "description": "With learn: the set's name, e.g. \"Fuji X Weekly\""]]],
+         "annotations": ["readOnlyHint": false, "destructiveHint": false]],
         ["name": "fuji_compare", "description": "Field-by-field differences between two recipes or slots. Each side is a recipe slug/name or a slot like \"C3\" (read from the camera).",
          "inputSchema": ["type": "object", "properties": ["a": ["type": "string"], "b": ["type": "string"]], "required": ["a", "b"]], "annotations": ro],
         ["name": "fuji_kits", "description": "Kits: named sets of recipes for the slots (\"Iceland\": C1 Green Acros, C2 Strong Classic Neg, …), written in one go with fuji_plan_write.",
@@ -132,6 +141,30 @@ final class Tools: @unchecked Sendable {
         case "fuji_recipe": return try recipe(a)
         case "fuji_compare": return try await compare(a)
         case "fuji_render": return try await render(a)
+        case "fuji_match_look":
+            if a["evaluate"] as? Bool == true || a["learn"] != nil {
+                if let set = a["learn"] as? String {
+                    let name = a["name"] as? String ?? "Reference"
+                    let n = try LookIndex.importSet(jsonl: URL(fileURLWithPath: (set as NSString).expandingTildeInPath), name: name, into: library)
+                    _ = LookIndex.load(library)
+                    return ["imported": n.recipes, "photos": n.photos, "set": name] as JSON
+                }
+                let index = LookIndex.load(library)
+                let refs = LookIndex.referenceRecipes(library)
+                let mine = try library.recipes()
+                let ev = LookMatch.evaluate(index: index, recipes: mine + refs) { $0.status != "reference" }
+                var report = "Your library's photos, learning from everything:\n" + ev.text
+                var numbers: JSON = ["library": plain(ev)]
+                if !refs.isEmpty {
+                    let alone = LookMatch.evaluate(index: index, recipes: mine)
+                    let theirs = LookMatch.evaluate(index: index, recipes: mine + refs) { $0.status == "reference" }
+                    report += "\n\nThe same photos, learning from your library only:\n" + alone.text
+                    report += "\n\nReference sets' photos, learning from everything:\n" + theirs.text
+                    numbers["libraryOnly"] = plain(alone); numbers["reference"] = plain(theirs)
+                }
+                return ["report": report, "numbers": numbers] as JSON
+            }
+            return try await matchLook(a)
         case "fuji_kits": return plain(try library.kits())
         case "fuji_backups":
             return try library.backups().map { url -> JSON in
@@ -222,6 +255,55 @@ final class Tools: @unchecked Sendable {
             out.append(["recipe": r.slug, "name": r.name, "jpeg": u.path, "seconds": (made.seconds * 10).rounded() / 10, "notes": made.notes])
         }
         return ["raw": raw.path, "renders": out] as JSON
+    }
+
+    func matchLook(_ a: JSON) async throws -> Any {
+        let image = URL(fileURLWithPath: (try str(a, "image") as NSString).expandingTildeInPath)
+        guard FileManager.default.fileExists(atPath: image.path) else { throw ToolError("No file at \(image.path).") }
+        let stats = try LookStats.measure(file: image)
+        // Learns from the library's own photos only: measured with fuji match --evaluate, adding a reference set such as
+        // Fuji X Weekly's photos made guesses on the owner's photos worse (film 40% → 30%), see ADR 0005.
+        let guess = LookMatch.firstGuess(stats, index: LookIndex.load(library), recipes: try library.recipes())
+        var out: JSON = ["image": image.path, "firstGuess": ["summary": guess.settings.summary, "text": guess.settings.text,
+                                                             "settings": plain(guess.settings), "notes": guess.notes] as JSON,
+                         "looksLike": guess.neighbours.prefix(3).map { n -> JSON in
+                             var j: JSON = ["recipe": n.recipe.slug, "name": n.recipe.name, "photo": n.file]
+                             if n.recipe.status == "reference" { j["from"] = n.recipe.source?.creator ?? "reference set"; j["url"] = n.recipe.source?.url ?? ""; j["inLibrary"] = false }
+                             return j
+                         },
+                         "look": ["mono": stats.mono, "saturation": (stats.chroma * 10).rounded() / 10,
+                                  "castMid": stats.castMid.map { ($0 * 10).rounded() / 10 }, "tone": stats.tone.map { $0.rounded() }] as JSON]
+        var best: (RecipeSettings, Int?, Data?) = (guess.settings, nil, nil)
+        var rawURL: URL?
+        if let r = a["raw"] as? String {
+            let raw = URL(fileURLWithPath: (r as NSString).expandingTildeInPath)
+            guard FileManager.default.fileExists(atPath: raw.path) else { throw ToolError("No file at \(raw.path).") }
+            rawURL = raw
+            let cache = RenderCache(library: library)
+            var cam: FujiCamera?
+            var base: ConversionProfile?
+            let start = Date()
+            let found = try await LookMatch.refine(reference: stats, start: guess.settings, budget: a["budget"] as? Int ?? 60) { s in
+                if let hit = cache.cached(raw: raw, settings: s), let d = try? Data(contentsOf: hit) { return d }
+                if cam == nil { cam = try await Cameras.shared.require() }
+                if base == nil { base = try await cam!.uploadRAF(try Data(contentsOf: raw)) }
+                let made = try await cam!.render(s, base: base!)
+                try cache.store(made.jpeg, raw: raw, settings: s)
+                return made.jpeg
+            }
+            out["raw"] = raw.path
+            out["seconds"] = Int(Date().timeIntervalSince(start))
+            out["matches"] = found.map { c -> JSON in
+                ["match": c.match, "summary": c.settings.summary, "text": c.settings.text, "settings": plain(c.settings),
+                 "jpeg": cache.url(raw: raw, settings: c.settings).path]
+            }
+            if let top = found.first { best = (top.settings, top.match, top.jpeg) }
+        }
+        if let name = a["save"] as? String, !name.isEmpty {
+            let saved = try library.saveMatched(best.0, name: name, reference: image, raw: rawURL, match: best.1, render: best.2, notes: guess.notes)
+            out[saved.existing ? "alreadyInLibrary" : "saved"] = saved.recipe.slug
+        }
+        return out
     }
 
     func str(_ a: JSON, _ key: String) throws -> String {

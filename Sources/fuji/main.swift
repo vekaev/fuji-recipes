@@ -107,6 +107,49 @@ func cli() -> Int32 {
         var args: [String: Any] = ["raw": raw, "full": rest.contains("--full")]
         if !names.isEmpty { args["recipes"] = Array(names) }
         return runTool("fuji_render", args)
+    case "look-stats":
+        // Developer aid: the measured look of each file, one JSON line each (for calibrating Match a look).
+        for f in rest {
+            guard let st = try? LookStats.measure(file: URL(fileURLWithPath: f)), let d = try? JSONEncoder().encode(st) else { continue }
+            print(f + "\t" + String(decoding: d, as: UTF8.self))
+        }
+        return 0
+    case "match":
+        // fuji match <photo> [file.raf] [--budget N] [--save "Name"]: Match a look from the terminal.
+        let plainArgs = rest.enumerated().filter { i, v in !v.hasPrefix("--") && !(i > 0 && ["--budget", "--save", "--learn", "--name", "--cases", "--seed"].contains(rest[i - 1])) }.map(\.element)
+        if let i = rest.firstIndex(of: "--learn"), i + 1 < rest.count {
+            var args: [String: Any] = ["learn": rest[i + 1]]
+            if let j = rest.firstIndex(of: "--name"), j + 1 < rest.count { args["name"] = rest[j + 1] }
+            return runTool("fuji_match_look", args)
+        }
+        if rest.contains("--benchmark") {
+            // fuji match --benchmark [file.raf] [--cases N] [--seed N]: hidden recipes, found from their renders alone.
+            let n = rest.firstIndex(of: "--cases").flatMap { $0 + 1 < rest.count ? Int(rest[$0 + 1]) : nil } ?? 20
+            let seed = rest.firstIndex(of: "--seed").flatMap { $0 + 1 < rest.count ? UInt64(rest[$0 + 1]) : nil } ?? 7
+            let rawPath = rest.first { $0.uppercased().hasSuffix(".RAF") }
+            let r = blocking { () async throws -> String in
+                let cam = try await Cameras.shared.require()
+                let raf = try rawPath.map { try Data(contentsOf: URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath)) }
+                    ?? (Data("FUJIFILMCCD-RAW 0201FF383501X-E5".utf8) + Data(count: 4000))
+                let base = try await cam.uploadRAF(raf)
+                let b = try await LookMatch.benchmark(count: n, seed: seed, render: { try await cam.render($0, base: base).jpeg },
+                                                      log: { FileHandle.standardError.write(Data(($0 + "\n").utf8)) })
+                return b.text
+            }
+            switch r { case .success(let s): print(s); return 0; case .failure(let e): return fail(e) }
+        }
+        if rest.contains("--evaluate") {
+            switch blocking({ try await tools.call("fuji_match_look", ["evaluate": true]) }) {
+            case .success(let v): print(((v as? JSON)?["report"] as? String) ?? pretty(v)); return 0
+            case .failure(let e): return fail(e)
+            }
+        }
+        guard let image = plainArgs.first else { print("Usage: fuji match <photo> [file.raf] [--budget N] [--save \"Name\"] | fuji match --evaluate"); return 2 }
+        var args: [String: Any] = ["image": image]
+        if plainArgs.count > 1 { args["raw"] = plainArgs[1] }
+        if let i = rest.firstIndex(of: "--budget"), i + 1 < rest.count, let n = Int(rest[i + 1]) { args["budget"] = n }
+        if let i = rest.firstIndex(of: "--save"), i + 1 < rest.count { args["save"] = rest[i + 1] }
+        return runTool("fuji_match_look", args)
     case "settings-restore":
         // Experimental, for the supervised FS test (ADR 0004): sends a whole settings file back to the camera.
         guard let path = rest.first(where: { !$0.hasPrefix("--") }), rest.contains("--owner-is-watching") else {
@@ -204,7 +247,7 @@ func serve() {
     ProcessInfo.processInfo.endActivity(activity)   // stdin closed: the client is gone
 }
 
-let needsCamera = ["render", "settings-restore", "mcp", "status", "slots", "backup", "call", "probe", "doctor"].contains(command)
+let needsCamera = ["render", "match", "settings-restore", "mcp", "status", "slots", "backup", "call", "probe", "doctor"].contains(command)
 if needsCamera && !Cameras.shared.simulate { CameraBrowser.shared.start() }
 Thread.detachNewThread {
     if command == "mcp" { serve(); exit(0) }

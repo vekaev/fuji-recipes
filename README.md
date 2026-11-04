@@ -46,6 +46,11 @@ by how it looks, not by its numbers, so the photos come first and the settings s
 - **Studio**: pick one of your RAW photos and see it developed by your camera with each recipe, side by side, the way
   FUJIFILM X RAW Studio does it (the camera does the work, so it's the real look). Renders are kept, so the sheet opens
   instantly next time; ♡ the ones you like.
+- **Match a look**: drop in any photo you love (a Leica shot, a film scan, a post) and get the recipe that brings your
+  camera closest. A first guess comes from your library's photos straight away; then your X-E5 develops one of your
+  RAWs with candidate recipes (about 50, ~2 s each) and you get the three closest next to your photo, with a match %,
+  to save as To try. `fuji match --evaluate` shows how accurate the guesses are on your own library, and
+  `fuji match --benchmark` how often the camera search finds a hidden recipe again.
 - **Add recipes**: paste or drop Instagram / TikTok / YouTube links (many at once) or Instagram's saved-posts export.
   Claude reads the reels on the Mac (`/recipe`, `fuji_inbox`), and you keep or skip each one here.
 - No camera yet: a step-by-step guide to the camera's USB mode, with a live connection check.

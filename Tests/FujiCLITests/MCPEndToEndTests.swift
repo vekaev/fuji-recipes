@@ -66,7 +66,7 @@ final class MCPEndToEndTests: XCTestCase {
         let r = try call("tools/list", [:])
         let names = ((r["result"] as? [String: Any])?["tools"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
         for t in ["fuji_camera", "fuji_slots", "fuji_save_recipe", "fuji_edit_recipe", "fuji_plan_write", "fuji_apply_write",
-                  "fuji_render", "fuji_inbox_add", "fuji_slot_history", "fuji_tag"] {
+                  "fuji_render", "fuji_match_look", "fuji_inbox_add", "fuji_slot_history", "fuji_tag"] {
             XCTAssertTrue(names.contains(t), "missing \(t)")
         }
     }
@@ -115,5 +115,35 @@ final class MCPEndToEndTests: XCTestCase {
         XCTAssertEqual(again["added"] as? Int, 0, "a link already queued isn't added twice")
         let inbox = "\(try tool("fuji_inbox"))"
         XCTAssertTrue(inbox.contains("XYZ9"), inbox)
+    }
+
+    /// Match a look over MCP: a photo developed with a known recipe goes in; the camera search on the same RAW finds
+    /// a recipe whose render looks the same, saves it, and the accuracy report runs on the library.
+    func testMatchALook() throws {
+        var target: [String: Any] = ["film": "Classic Neg.", "wb": "Auto", "wb_red": 3, "wb_blue": -4, "dynamic_range": "DR100",
+                                     "highlight": -1, "shadow": 1, "color": 2]
+        target["grain_roughness"] = "Off"
+        let saved = try XCTUnwrap(try tool("fuji_save_recipe", ["name": "E2E Target", "settings": target]) as? [String: Any])
+        let slug = try XCTUnwrap(saved["saved"] as? String)
+        let raw = lib.appendingPathComponent("photo.RAF")
+        try (Data("FUJIFILMCCD-RAW 0201FF383501X-E5".utf8) + Data(count: 4000)).write(to: raw)
+        let rendered = try XCTUnwrap(((try tool("fuji_render", ["raw": raw.path, "recipes": [slug]]) as? [String: Any])?["renders"] as? [[String: Any]])?.first?["jpeg"] as? String)
+        let reference = lib.appendingPathComponent("someone else's photo.jpg")
+        try FileManager.default.copyItem(at: URL(fileURLWithPath: rendered), to: reference)
+
+        let guessOnly = try XCTUnwrap(try tool("fuji_match_look", ["image": reference.path]) as? [String: Any])
+        XCTAssertNotNil((guessOnly["firstGuess"] as? [String: Any])?["summary"], "a first guess needs no camera")
+        XCTAssertNil(guessOnly["matches"])
+
+        let result = try XCTUnwrap(try tool("fuji_match_look", ["image": reference.path, "raw": raw.path, "budget": 50, "save": "E2E Matched"]) as? [String: Any])
+        let matches = try XCTUnwrap(result["matches"] as? [[String: Any]])
+        XCTAssertFalse(matches.isEmpty)
+        XCTAssertGreaterThanOrEqual(try XCTUnwrap(matches.first?["match"] as? Int), 85, "\(matches.first ?? [:])")
+        let jpeg = try XCTUnwrap(matches.first?["jpeg"] as? String)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: jpeg), "the closest render is kept for the app to show")
+        XCTAssertTrue(result["saved"] != nil || result["alreadyInLibrary"] != nil, "\(result)")
+
+        let report = "\(try tool("fuji_match_look", ["evaluate": true]))"
+        XCTAssertTrue(report.contains("sample photos"), report)
     }
 }

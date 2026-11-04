@@ -95,6 +95,7 @@ Shared with `/recipe` and `fuji mcp`: field names in skills/fuji-recipes/referen
 | Same recipe in two slots: ⧉ in the slot column (hover: "Same recipe as C3"), "also in C3" on iPhone, "same recipe as C3" on the slot page; FS compared without WB shift / toning | ✓ | ✓ | — |
 | Camera limits: a slot still shows its recipe when the camera kept a lower DR (DR200/DR400 need the slot's hidden ISO ≥ 320/640; not settable over USB) or dropped B&W toning; the slot page says what differs; refusals are explained in the message with the on-camera fix (`RecipeSettings.cameraLimitedDifferences`, `Library.matchOnCamera`) | ✓ | ✓ | `fuji_slots` → `cameraLimits` |
 | Studio: one RAW (.RAF, same model) developed by the camera with each recipe (upload once 0x900C/D, profile 0xD185 per recipe, trigger 0xD183, fetch + delete the new object; `FujiKit/Render.swift`), cached in `renders/`, grid + big preview to compare, ♡ per tile; filters Favorites & to try / All / ♡ / To try / tags | ✓ Studio tab (⌘2), drop or choose a RAF | ✓ Studio tab; the RAF is copied into the library | `fuji_render`, `fuji render <raf> [recipes]` |
+| Match a look (`FujiKit/Look.swift`, ADR 0006): any reference photo → `LookStats` (tone shape around the median, cast of near-grey pixels per zone, saturation per hue, grain, local contrast; flat borders trimmed) → first guess from the library's own sample photos (nearest neighbours, `LookIndex` in `looks.json`; rules alone when the library has < 15 photos) → camera search on the Studio RAW (film simulations, then Levenberg–Marquardt on WB shift / Color / tone with one-render-per-setting sensitivities, every film corrected once, polish; budget 60 renders) → three closest with a match %, Save = to-try recipe "Look of <file>" with the reference + render as samples. `fuji match --evaluate` reports accuracy on the library | ✓ Studio ▸ Match a look: drop / choose a photo or From Photos, "Looks like" chips, first guess + Save, "Find the closest recipe", results next to the reference | ✓ same view; picked photos (Files or Photos) are copied into the library's studio/looks | `fuji_match_look`, `fuji match <photo> [raf] [--budget N] [--save Name]`, `--evaluate`, `--benchmark [raf] [--cases N] [--seed N]`, `--learn <jsonl> --name` |
 | Slot history + Put back | ✓ | ✓ | `fuji_slot_history` |
 | Add recipes (was Inbox, then New looks): paste/drop links, Instagram export, Keep/Skip | ✓ (drop, paste) | ✓ (paste; share extension: later) | `fuji_inbox`, `fuji_inbox_add`, `fuji_inbox_resolve` |
 | Reading reels | via Claude / `/recipe` on the Mac | queued, read on the Mac | `fuji_inbox` → `/recipe` |
@@ -105,12 +106,19 @@ Shared with `/recipe` and `fuji mcp`: field names in skills/fuji-recipes/referen
 
 ## Tests (run `scripts/test.sh` before saying anything works)
 
-- `swift test`: FujiKitTests (codec, settings file, FS writes, session rule, DR gate, studio rendering, inbox,
-  history) against `SimulatedCamera`, which models the X-E5's refusals, settings file + checksum, hidden-ISO DR gate
+- `swift test`: FujiKitTests (codec, settings file, FS writes, session rule, DR gate, studio rendering, Match a look:
+  measuring, border trim, learning from library photos, camera search finding a known recipe and staying B&W, saving;
+  inbox, history) against `SimulatedCamera`, which models the X-E5's refusals, settings file + checksum, hidden-ISO DR gate
   and RAW development; FujiCLITests run the real `fuji mcp` binary over JSON-RPC like Claude (simulated camera,
-  throwaway library).
+  throwaway library), including `fuji_match_look` with a camera search and `--evaluate`.
+- The simulated camera's renders react to every setting (film character per hue, Color, WB shift, tone, B&W toning)
+  so searches can be tested; they are not Fujifilm's rendering. Real accuracy needs the owner's X-E5 and a RAF.
+- `fuji match --benchmark [raf]`: 20 hidden recipes (seed 7) developed and found again from their renders alone; one
+  score to compare search changes (simulated camera 2026-11-04: 15/20 at 85%+, 12/20 recovered, score 101.6). Run it
+  before and after any change to `LookMatch.refine` and keep the change only if the score goes up.
 - `FujiRecipesUITests` (scheme FujiRecipes-iOS → test): the iPhone app with `-uiTesting` (throwaway library seeded by
-  `AppModel.uiTestLibrary`, simulated X-E5): rename a recipe, put one in C3 + Undo, Studio render + preview, add links.
+  `AppModel.uiTestLibrary`, simulated X-E5): rename a recipe, put one in C3 + Undo, Studio render + preview, Match a look (guess → camera
+  search → save → in Recipes), add links.
   New screens get an accessibility identifier and a UI test here. Mac UI tests: not added (they'd drive the owner's
   screen); the Mac shares the same views and model.
 

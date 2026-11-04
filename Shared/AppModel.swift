@@ -101,6 +101,14 @@ final class AppModel {
         try? FileManager.default.createDirectory(at: raw.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? (Data("FUJIFILMCCD-RAW 0201FF383501X-E5".utf8) + Data(count: 4000)).write(to: raw)
         UserDefaults.standard.set(raw.path, forKey: "studioRaw")
+        // Match a look: a reference photo developed (by the simulated camera) with a recipe the library doesn't have.
+        let ref = root.appendingPathComponent("studio/looks/Leica street.jpg")
+        try? FileManager.default.createDirectory(at: ref.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var lp = ConversionProfile(Data(count: ConversionProfile.base + 4 * 29))
+        lp[8] = Int32(Film.all.firstIndex(of: "Classic Chrome")! + 1); lp[13] = 3; lp[14] = -3; lp[16] = -10; lp[17] = 10
+        try? SimulatedCamera.renderJPEG(lp, full: true).write(to: ref)
+        UserDefaults.standard.set(ref.path, forKey: "lookReference")
+        UserDefaults.standard.set("recipes", forKey: "studioMode")
         return lib
     }
 
@@ -110,6 +118,9 @@ final class AppModel {
         reload()
         if studioRaw == nil, let p = UserDefaults.standard.string(forKey: "studioRaw"), FileManager.default.fileExists(atPath: p) {
             studioRaw = URL(fileURLWithPath: p)
+        }
+        if lookReference == nil, let p = UserDefaults.standard.string(forKey: "lookReference"), FileManager.default.fileExists(atPath: p) {
+            lookReference = URL(fileURLWithPath: p)
         }
         CameraBrowser.shared.onChange = { [weak self] _, _ in Task { @MainActor in await self?.check() } }
         CameraBrowser.shared.start()
@@ -358,7 +369,134 @@ final class AppModel {
         }
     }
 
-    func stopStudio() { studioTask?.cancel() }
+    func stopStudio() { studioTask?.cancel(); lookTask?.cancel() }
+
+    // MARK: Match a look: any photo in, the recipe that comes closest out
+
+    enum StudioMode: String { case recipes, look }
+    var studioMode: StudioMode = StudioMode(rawValue: UserDefaults.standard.string(forKey: "studioMode") ?? "") ?? .recipes {
+        didSet { UserDefaults.standard.set(studioMode.rawValue, forKey: "studioMode") }
+    }
+    var lookReference: URL? {
+        didSet { UserDefaults.standard.set(lookReference?.path, forKey: "lookReference"); lookResults = []; lookGuess = nil; analyseLook() }
+    }
+    var lookStats: LookStats?
+    var lookGuess: (settings: RecipeSettings, notes: [String], neighbours: [LookMatch.Neighbour])?
+    struct LookResult: Identifiable { var id: String { RenderCache.recipeKey(settings) }; var settings: RecipeSettings; var match: Int; var jpeg: URL }
+    var lookResults: [LookResult] = []
+    var lookSearching = false
+    var lookProgress = (done: 0, budget: 0, stage: "", best: 0)
+    var lookError: String?
+    var lookAnalysing = false
+    var lookSaved: [String: String] = [:]          // result id → saved recipe slug
+    var lookBudget = 60
+    private var lookTask: Task<Void, Never>?
+
+    /// Uses a photo as the reference. iPhone / iPad: a picked file is only readable for a while, so it's copied into
+    /// the library's studio/looks folder (as are photos from the Photos library, passed as data).
+    func useLookReference(_ url: URL) {
+        let ok = url.startAccessingSecurityScopedResource()
+        defer { if ok { url.stopAccessingSecurityScopedResource() } }
+        #if os(iOS)
+        let dir = library.root.appendingPathComponent("studio/looks")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let copy = dir.appendingPathComponent(url.lastPathComponent)
+        try? FileManager.default.removeItem(at: copy)
+        try? FileManager.default.copyItem(at: url, to: copy)
+        lookReference = copy
+        #else
+        lookReference = url
+        #endif
+    }
+
+    func useLookReference(data: Data, name: String) {
+        let dir = library.root.appendingPathComponent("studio/looks")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent(name)
+        do { try data.write(to: file, options: .atomic); lookReference = file } catch { lookError = "Couldn't keep that photo: \(error.localizedDescription)" }
+    }
+
+    /// Measures the reference and makes the first guess from the library's sample photos (measured once, then kept in
+    /// looks.json), off the main thread.
+    func analyseLook() {
+        guard let ref = lookReference else { lookStats = nil; return }
+        lookError = nil
+        lookAnalysing = true
+        let lib = library
+        Task.detached(priority: .userInitiated) {
+            let result = Result { () throws -> (LookStats, (RecipeSettings, [String], [LookMatch.Neighbour])) in
+                let stats = try LookStats.measure(file: ref)
+                let index = LookIndex.load(lib)
+                let g = LookMatch.firstGuess(stats, index: index, recipes: (try? lib.recipes()) ?? [])
+                return (stats, (g.settings, g.notes, g.neighbours))
+            }
+            await MainActor.run {
+                guard self.lookReference == ref else { return }
+                self.lookAnalysing = false
+                switch result {
+                case .success(let (stats, g)): self.lookStats = stats; self.lookGuess = (g.0, g.1, g.2)
+                case .failure(let e): self.lookError = "\(e)"; self.lookStats = nil
+                }
+            }
+        }
+    }
+
+    /// The camera develops the Studio's RAW with candidate recipes and keeps the three whose look comes closest.
+    func searchLook() {
+        guard let raw = studioRaw, let stats = lookStats, let guess = lookGuess, !lookSearching, !studioRendering else { return }
+        guard connected else { lookError = "Plug in the camera: it develops your RAW with each candidate."; return }
+        guard !writing else { say("Writing to the camera; try in a moment"); return }
+        lookError = nil
+        lookSearching = true
+        lookResults = []
+        lookProgress = (0, lookBudget, "Sending the RAW to the camera", 0)
+        let budget = lookBudget
+        lookTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.lookSearching = false; self.busy = nil }
+            do {
+                guard let cam = await Cameras.shared.current() else { throw CameraError("The camera isn't connected.") }
+                if self.studioBase == nil {
+                    self.busy = "Sending the RAW to the camera…"
+                    self.studioBase = try await cam.uploadRAF(try Data(contentsOf: raw))
+                }
+                let base = self.studioBase!
+                let cache = RenderCache(library: self.library)
+                let found = try await LookMatch.refine(reference: stats, start: guess.settings, budget: budget, render: { s in
+                    if let hit = cache.cached(raw: raw, settings: s), let d = try? Data(contentsOf: hit) { return d }
+                    let made = try await cam.render(s, base: base)
+                    try cache.store(made.jpeg, raw: raw, settings: s)
+                    return made.jpeg
+                }, progress: { p in
+                    self.lookProgress = (p.done, p.budget, p.stage, p.best?.match ?? 0)
+                    self.busy = "Matching the look · \(p.done) of \(p.budget)"
+                })
+                self.lookResults = found.map { LookResult(settings: $0.settings, match: $0.match, jpeg: cache.url(raw: raw, settings: $0.settings)) }
+                self.say(found.first.map { "Closest: \($0.match)% match" } ?? "No match found")
+            } catch is CancellationError {
+                self.say("Stopped")
+            } catch {
+                self.lookError = "\(error)"
+            }
+        }
+    }
+
+    /// Keeps a result (or the first guess, without the camera) as a to-try recipe named after the reference photo.
+    func saveLook(_ settings: RecipeSettings, match: Int?, jpeg: URL?) {
+        guard let ref = lookReference else { return }
+        let name = "Look of " + ref.deletingPathExtension().lastPathComponent
+        do {
+            let saved = try library.saveMatched(settings, name: name, reference: ref, raw: jpeg == nil ? nil : studioRaw, match: match,
+                                                render: jpeg.flatMap { try? Data(contentsOf: $0) }, notes: lookGuess?.notes ?? [])
+            lookSaved[RenderCache.recipeKey(settings)] = saved.recipe.slug
+            reload()
+            say(saved.existing ? "Already in your library as \(saved.recipe.name)" : "Saved \(saved.recipe.name) · To try")
+        } catch {
+            lookError = "\(error)"
+        }
+    }
+
+    func openRecipe(_ slug: String) { settingsFor = slug; sheet = .settings }
 
     // MARK: Slots: stage, review, write
 

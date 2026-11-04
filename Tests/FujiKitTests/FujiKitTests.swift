@@ -310,3 +310,134 @@ final class EndToEndCameraTests: XCTestCase {
         XCTAssertEqual(ok.after.dynamicRange, "DR400")
     }
 }
+
+/// Match a look: measuring, learning from the library, and the camera search, all against the simulated camera.
+final class MatchLookTests: XCTestCase {
+    func fakeRAF() -> Data { Data("FUJIFILMCCD-RAW 0201FF383501X-E5".utf8) + Data(count: 4000) }
+    func temp() -> Library { Library(root: FileManager.default.temporaryDirectory.appendingPathComponent("fuji-look-\(UUID().uuidString)")) }
+
+    func recipe(_ film: String, red: Int = 0, blue: Int = 0, hi: Double = 0, sh: Double = 0, color: Int = 0) -> RecipeSettings {
+        var s = RecipeSettings(); s.film = film; s.wbRed = red; s.wbBlue = blue; s.highlight = hi; s.shadow = sh; s.color = color
+        s.normalize(); return s
+    }
+
+    /// The simulated camera's development of `s`, as the camera would hand it back.
+    func developed(_ s: RecipeSettings) async throws -> Data {
+        let cam = FujiCamera(transport: SimulatedCamera())
+        let base = try await cam.uploadRAF(fakeRAF())
+        return try await cam.render(s, base: base).jpeg
+    }
+
+    func testMeasuresWarmthMonoAndTrimsBorders() async throws {
+        let neutral = try LookStats.measure(data: try await developed(recipe("Provia")))
+        let warm = try LookStats.measure(data: try await developed(recipe("Provia", red: 6, blue: -6)))
+        let mono = try LookStats.measure(data: try await developed(recipe("Acros")))
+        XCTAssertGreaterThan(warm.castMid[1], neutral.castMid[1] + 3, "a warm WB shift reads as warmer near-greys")
+        XCTAssertTrue(mono.mono); XCTAssertFalse(neutral.mono)
+        XCTAssertEqual(neutral.distance(to: neutral), 0, accuracy: 1e-9)
+        XCTAssertGreaterThan(neutral.distance(to: warm), 5)
+
+        // The same picture inside a white Instagram-style letterbox measures (almost) the same.
+        let chromeJPEG = try await developed(recipe("Classic Chrome"))
+        let src = try XCTUnwrap(CGImageSourceCreateWithData(chromeJPEG as CFData, nil))
+        let img = try XCTUnwrap(CGImageSourceCreateImageAtIndex(src, 0, nil))
+        let W = img.width, H = img.height * 2
+        let ctx = try XCTUnwrap(CGContext(data: nil, width: W, height: H, bitsPerComponent: 8, bytesPerRow: W * 4,
+                                          space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: W, height: H))
+        ctx.draw(img, in: CGRect(x: 0, y: img.height / 2, width: img.width, height: img.height))
+        let boxed = LookStats.measure(image: try XCTUnwrap(ctx.makeImage()))
+        let plain = LookStats.measure(image: img)
+        XCTAssertLessThan(abs(boxed.tone[6] - plain.tone[6]), 3, "white borders are cut off before measuring")
+    }
+
+    /// The core promise: given only a photo developed with a recipe, the camera search finds that recipe (or one that
+    /// looks the same) starting from a plain Provia guess.
+    func testCameraSearchFindsAKnownRecipe() async throws {
+        let target = recipe("Classic Neg.", red: 3, blue: -4, hi: -1, sh: 1, color: 2)
+        let reference = try LookStats.measure(data: try await developed(target))
+        let sim = SimulatedCamera()
+        let cam = FujiCamera(transport: sim)
+        let base = try await cam.uploadRAF(fakeRAF())
+        var steps = 0
+        let found = try await LookMatch.refine(reference: reference, start: recipe("Provia"), budget: 70,
+                                               render: { try await cam.render($0, base: base).jpeg },
+                                               progress: { _ in steps += 1 })
+        let best = try XCTUnwrap(found.first)
+        XCTAssertLessThanOrEqual(sim.renders, 70, "stays within the budget")
+        XCTAssertEqual(steps, sim.renders)
+        XCTAssertEqual(best.settings.film, "Classic Neg.")
+        XCTAssertLessThanOrEqual(abs(best.settings.wbRed - 3), 1, best.settings.summary)
+        XCTAssertLessThanOrEqual(abs(best.settings.wbBlue + 4), 1, best.settings.summary)
+        XCTAssertLessThanOrEqual(abs((best.settings.color ?? 0) - 2), 1, best.settings.summary)
+        XCTAssertGreaterThanOrEqual(best.match, 90, best.settings.summary)
+        XCTAssertLessThanOrEqual(found.count, 3)
+        XCTAssertTrue(sim.objectCount == 0, "every render is deleted from the camera")
+    }
+
+    func testCameraSearchStaysBlackAndWhite() async throws {
+        var target = recipe("Acros+R"); target.monoWarmCool = 4; target.normalize()
+        let reference = try LookStats.measure(data: try await developed(target))
+        let guess = LookMatch.firstGuess(reference)
+        XCTAssertTrue(guess.settings.isMonochrome)
+        let cam = FujiCamera(transport: SimulatedCamera())
+        let base = try await cam.uploadRAF(fakeRAF())
+        let found = try await LookMatch.refine(reference: reference, start: guess.settings, budget: 30) { try await cam.render($0, base: base).jpeg }
+        XCTAssertTrue(found.allSatisfy { $0.settings.isMonochrome })
+        XCTAssertGreaterThan(try XCTUnwrap(found.first?.settings.monoWarmCool), 0, "warm toning found")
+    }
+
+    /// The first guess learns from the library's sample photos: a new photo with a look close to one recipe's samples
+    /// gets that recipe's film and settings, and the evaluation reports how well that works.
+    func testFirstGuessLearnsFromLibrarySamples() async throws {
+        let lib = temp()
+        let looks: [(String, RecipeSettings)] = [
+            ("Warm Neg", recipe("Classic Neg.", red: 4, blue: -5, hi: -1, color: 3)),
+            ("Cool Chrome", recipe("Classic Chrome", red: -2, blue: 3, sh: 1, color: -2)),
+            ("Bright Velvia", recipe("Velvia", color: 3)),
+            ("Soft Eterna", recipe("Eterna", hi: -2, sh: -2)),
+            ("Golden Nostalgic", recipe("Nostalgic Neg.", red: 5, blue: -6, color: 1)),
+            ("Plain Provia", recipe("Provia")),
+        ]
+        for (name, s) in looks {
+            let r = try lib.save(Recipe(slug: "", name: name, settings: s))
+            let dir = lib.root.appendingPathComponent("samples/\(r.slug)")
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            // three photos each: the recipe and two near variations (a different light, a slightly different exposure)
+            for (i, v) in [s, { var x = s; x.wbRed += 1; return x }(), { var x = s; x.highlight += 0.5; return x }()].enumerated() {
+                try await developed(v).write(to: dir.appendingPathComponent("\(i).jpg"))
+            }
+        }
+        let index = LookIndex.load(lib)
+        XCTAssertEqual(index.entries.count, 18)
+        XCTAssertEqual(LookIndex.load(lib).entries.count, 18, "a second load reuses the measurements")
+
+        let photo = try LookStats.measure(data: try await developed(recipe("Classic Neg.", red: 4, blue: -4, hi: -1, color: 3)))
+        let guess = LookMatch.firstGuess(photo, index: index, recipes: try lib.recipes())
+        XCTAssertEqual(guess.neighbours.first?.recipe.name, "Warm Neg")
+        XCTAssertEqual(guess.settings.film, "Classic Neg.")
+        XCTAssertGreaterThan(guess.settings.wbRed, 1)
+
+        let ev = LookMatch.evaluate(index: index, recipes: try lib.recipes())
+        XCTAssertEqual(ev.photos, 18); XCTAssertEqual(ev.recipes, 6)
+        XCTAssertGreaterThanOrEqual(ev.recognisedTop3, 0.8, ev.text)
+        XCTAssertEqual(ev.mono, 1, accuracy: 1e-9)
+        XCTAssertTrue(ev.text.contains("18 sample photos of 6 recipes"), ev.text)
+    }
+
+    func testSavingAMatchKeepsTheReferenceAndAvoidsDuplicates() throws {
+        let lib = temp()
+        let ref = lib.root.appendingPathComponent("leica.jpg")
+        try FileManager.default.createDirectory(at: lib.root, withIntermediateDirectories: true)
+        try SimulatedCamera.renderJPEG(ConversionProfile(Data(count: ConversionProfile.base + 4 * 29)), full: true).write(to: ref)
+        let s = recipe("Classic Chrome", red: 2, blue: -3)
+        let first = try lib.saveMatched(s, name: "Leica Look", reference: ref, raw: nil, notes: ["note"])
+        XCTAssertFalse(first.existing)
+        XCTAssertEqual(first.recipe.status, "to-try")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: lib.root.appendingPathComponent("samples/leica-look/reference.jpg").path))
+        XCTAssertTrue(first.recipe.notes?.contains("not checked on the camera") == true)
+        let again = try lib.saveMatched(s, name: "Leica Look 2", reference: ref)
+        XCTAssertTrue(again.existing); XCTAssertEqual(again.recipe.slug, "leica-look")
+        XCTAssertTrue(LookIndex.photos(first.recipe, library: lib).isEmpty, "the reference photo isn't a sample of the recipe")
+    }
+}
