@@ -200,6 +200,12 @@ final class AppModel {
         reload()
     }
 
+    /// Saves an edited recipe (name, description, status, tags, source). The slug stays, so its photos stay.
+    @discardableResult func update(_ r: Recipe) -> Bool {
+        do { _ = try library.save(r, allowDuplicate: true); reload(); say("Saved \(r.name)"); return true }
+        catch { say("Couldn't save: \(error)"); return false }
+    }
+
     func setTags(_ r: Recipe, _ tags: [String]) {
         var x = r; x.tags = tags.isEmpty ? nil : tags
         _ = try? library.save(x, allowDuplicate: true)

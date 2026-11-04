@@ -36,7 +36,8 @@ for Mac, iPhone and iPad run on the same `FujiKit`. Why this app and not another
 **Fuji Recipes** (early) in [Photo Minimalist](https://github.com/vekaev/photo-minimalist)'s style. You pick a recipe
 by how it looks, not by its numbers, so the photos come first and the settings sit behind "Settings ›".
 
-- **Looks**: every recipe as its name, three photos (tap for the big preview), tags such as B&W or "Leica style".
+- **Looks**: every recipe as its name, a short description, three photos (tap for the big preview), tags such as
+  B&W or "Leica style". Edit › renames it and changes its description, status, tags and source.
   On the Mac and a wide iPad the camera's slots sit beside it: drag a look onto a slot.
 - **Camera**: C1–C7 and the dial's FS1–FS3 with the look in each. A slot shows since when it holds that look, when
   you last shot with it, looks to swap in, and its history, so you can put the old one back. Changes are staged and

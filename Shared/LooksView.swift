@@ -67,16 +67,17 @@ struct LookCard: View {
             } else {
                 VStack(alignment: .leading, spacing: 9) {
                     HStack(alignment: .firstTextBaseline) {
-                        Text(recipe.name).font(.system(size: 19, weight: .bold)).tracking(-0.3)
+                        Text(recipe.name).font(.system(size: 19, weight: .bold)).tracking(-0.3).onTapGesture { edit() }
                         Spacer()
                         favorite
                     }
+                    description
                     HStack(spacing: 5) { ForEach(0..<3, id: \.self) { i in tile(three[i], i, photos, ratio: 1) } }
                     tags
                     HStack {
                         Text(model.whereabouts(recipe)).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
                         Spacer()
-                        Button("Settings ›") { model.settingsFor = recipe.slug; model.sheet = .settings }.font(.system(size: 13)).buttonStyle(.plain)
+                        Button("Edit ›") { edit() }.font(.system(size: 13)).buttonStyle(.plain)
                         putMenu
                     }
                 }
@@ -93,7 +94,7 @@ struct LookCard: View {
             .padding(8).background(Theme.card, in: RoundedRectangle(cornerRadius: 10))
         }
         .contextMenu {
-            Button("Settings…") { model.settingsFor = recipe.slug; model.sheet = .settings }
+            Button("Edit Name, Description and Tags…") { edit() }
             Button(recipe.status == "favorite" ? "Remove from Favorites" : "Favorite") { model.toggleFavorite(recipe) }
             Button("Copy as Text") { copyToPasteboard("\(recipe.name)\n\(recipe.settings.text)"); model.say("Copied as text") }
             if model.connected {
@@ -106,18 +107,29 @@ struct LookCard: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 Text(recipe.name).font(.system(size: 19, weight: .bold)).tracking(-0.3).lineLimit(2)
+                    .onTapGesture { edit() }.help("Edit name, description and tags")
                 Spacer(minLength: 4)
                 favorite
             }
+            description
             tags
             Text(model.whereabouts(recipe)).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 12) {
-                Button("Settings ›") { model.settingsFor = recipe.slug; model.sheet = .settings }.buttonStyle(.plain)
+                Button("Edit ›") { edit() }.buttonStyle(.plain)
                 if model.connected { putMenu }
             }
             .font(.system(size: 12))
         }
     }
+
+    @ViewBuilder private var description: some View {
+        if let d = recipe.notes?.trimmingCharacters(in: .whitespacesAndNewlines), !d.isEmpty {
+            Text(d).font(.system(size: 12.5)).foregroundStyle(.secondary).lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func edit() { model.settingsFor = recipe.slug; model.sheet = .settings }
 
     private var favorite: some View {
         Button { model.toggleFavorite(recipe) } label: {

@@ -203,58 +203,140 @@ struct ReviewSheet: View {
 }
 
 /// A recipe's settings, tags and source, behind "Settings ›" (ADR 0001: settings are on request).
+/// A recipe's page: its name, description, status, tags and source are editable (Save writes the recipe file;
+/// the slug, and so its photos, stay the same). The camera settings come last, read only.
+/// Without a recipe (a slot that isn't one) it shows just the settings.
 struct RecipeSettingsSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @State private var draft: Recipe?
     @State private var newTag = ""
 
+    static let statuses: [(String, String)] = [("to-try", "To try"), ("tried", "Tried"), ("mine", "Shot with"), ("favorite", "♡ Favorite"), ("rejected", "Not for me")]
+
     var body: some View {
-        let r = model.recipe(model.settingsFor)
-        let settings = r?.settings ?? model.slot?.draft ?? RecipeSettings()
-        let title = r?.name ?? model.slot?.id ?? "Settings"
-        VStack(alignment: .leading, spacing: 14) {
-            InkHeadline(text: title.lowercased() + ".", size: 30)
-            if let r {
-                Text(model.whereabouts(r)).font(.system(size: 13)).foregroundStyle(.secondary)
-                SectionTitle(text: "Tags")
-                FlowLayout(spacing: 6) {
-                    let tags = r.tags ?? []
-                    ForEach(Array(Set(model.allTags + ["Leica style", "Warm", "Cool", "B&W", "Bright day", "Night", "Film", "Punchy", "Soft"] + tags)).sorted(), id: \.self) { t in
-                        Chip(title: t, on: tags.contains(t)) { model.setTags(r, tags.contains(t) ? tags.filter { $0 != t } : tags + [t]) }
+        let original = model.recipe(model.settingsFor)
+        let settings = original?.settings ?? model.slot?.draft ?? RecipeSettings()
+        VStack(alignment: .leading, spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    if let r = draft {
+                        TextField("Name", text: bind(\.name)).textFieldStyle(.plain)
+                            .font(.system(size: 28, weight: .heavy)).tracking(-0.6)
+                        Text(model.whereabouts(r)).font(.system(size: 13)).foregroundStyle(.secondary)
+                        field("Description") {
+                            TextField("What it looks like, when you use it…", text: bind(\.notes, ""), axis: .vertical)
+                                .lineLimit(2...8)
+                        }
+                        field("Status") {
+                            FlowLayout(spacing: 6) {
+                                ForEach(Self.statuses, id: \.0) { key, label in
+                                    Chip(title: label, on: r.status == key) { draft?.status = key }
+                                }
+                            }
+                        }
+                        field("Tags") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                FlowLayout(spacing: 6) {
+                                    let tags = r.tags ?? []
+                                    ForEach(Array(Set(model.allTags + ["Leica style", "Warm", "Cool", "B&W", "Bright day", "Night", "Film", "Punchy", "Soft"] + tags)).sorted(), id: \.self) { t in
+                                        Chip(title: t, on: tags.contains(t)) { toggle(t) }
+                                    }
+                                }
+                                HStack {
+                                    TextField("New tag", text: $newTag).textFieldStyle(.roundedBorder).frame(maxWidth: 200).onSubmit(addTag)
+                                    Button("Add", action: addTag).buttonStyle(.plain).disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
+                                }
+                            }
+                        }
+                        field("Source") {
+                            VStack(alignment: .leading, spacing: 6) {
+                                TextField("Creator", text: sourceBind(\.creator)).textFieldStyle(.roundedBorder)
+                                TextField("Link", text: sourceBind(\.url)).textFieldStyle(.roundedBorder)
+                                    #if os(iOS)
+                                    .textInputAutocapitalization(.never).keyboardType(.URL)
+                                    #endif
+                                if let u = r.source?.url.flatMap(URL.init(string:)), u.scheme?.hasPrefix("http") == true {
+                                    Link("Open \(u.host() ?? "link")", destination: u).font(.system(size: 12))
+                                }
+                            }
+                        }
+                    } else {
+                        InkHeadline(text: (model.slot?.id ?? "settings").lowercased() + ".", size: 30)
+                    }
+                    field("Settings") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(settings.text).font(.system(size: 13, design: .monospaced)).frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
+                            if let s = original?.shooting, !s.isEmpty {
+                                Text(s.sorted { $0.key < $1.key }.map { "\($0.key.replacingOccurrences(of: "_", with: " ").capitalized): \($0.value)" }.joined(separator: "\n"))
+                                    .font(.system(size: 13)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
                     }
                 }
-                HStack {
-                    TextField("New tag", text: $newTag).textFieldStyle(.roundedBorder).frame(maxWidth: 200)
-                        .onSubmit { addTag(r) }
-                    Button("Add") { addTag(r) }.buttonStyle(.plain).disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-            SectionTitle(text: "Settings")
-            ScrollView {
-                Text(settings.text).font(.system(size: 13, design: .monospaced)).frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-                if let s = r?.shooting, !s.isEmpty {
-                    Text(s.sorted { $0.key < $1.key }.map { "\($0.key.replacingOccurrences(of: "_", with: " ").capitalized): \($0.value)" }.joined(separator: "\n"))
-                        .font(.system(size: 13)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
-                }
-                if let src = r?.source, let url = src.url.flatMap(URL.init(string:)) {
-                    Link("\(src.creator ?? "Source"): \(url.host() ?? url.absoluteString)", destination: url).font(.system(size: 13)).padding(.top, 8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                .textFieldStyle(.plain)
+                .padding(24)
             }
             HStack {
-                Button("Copy as text") { copyToPasteboard("\(title)\n\(settings.text)"); model.say("Copied as text") }.buttonStyle(.plain)
+                Button("Copy as text") { copyToPasteboard("\(draft?.name ?? model.slot?.id ?? "")\n\(settings.text)"); model.say("Copied as text") }.buttonStyle(.plain)
                 Spacer()
-                PillButton(title: "Done", primary: true) { dismiss() }
+                if draft != nil && draft != original {
+                    Button("Cancel") { dismiss() }.buttonStyle(.plain).keyboardShortcut(.cancelAction)
+                    PillButton(title: "Save", primary: true) { save() }.keyboardShortcut(.defaultAction)
+                } else {
+                    PillButton(title: "Done", primary: true) { dismiss() }.keyboardShortcut(.defaultAction)
+                }
             }
+            .padding(.horizontal, 24).padding(.vertical, 14)
+            .overlay(alignment: .top) { Theme.line.frame(height: 1) }
         }
-        .padding(24).sheetSize(520, 640)
+        .sheetSize(540, 680)
         .background(Theme.paper)
+        .onAppear { draft = original }
     }
 
-    private func addTag(_ r: Recipe) {
+    private func field<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            SectionTitle(text: title)
+            content()
+        }
+        .padding(.top, 4)
+    }
+
+    private func bind(_ key: WritableKeyPath<Recipe, String>) -> Binding<String> {
+        Binding(get: { draft?[keyPath: key] ?? "" }, set: { draft?[keyPath: key] = $0 })
+    }
+
+    private func bind(_ key: WritableKeyPath<Recipe, String?>, _ empty: String) -> Binding<String> {
+        Binding(get: { draft?[keyPath: key] ?? empty }, set: { draft?[keyPath: key] = $0.isEmpty ? nil : $0 })
+    }
+
+    private func sourceBind(_ key: WritableKeyPath<Recipe.Source, String?>) -> Binding<String> {
+        Binding(get: { draft?.source?[keyPath: key] ?? "" },
+                set: { v in
+                    if draft?.source == nil { draft?.source = Recipe.Source(kind: "manual") }
+                    draft?.source?[keyPath: key] = v.isEmpty ? nil : v
+                })
+    }
+
+    private func toggle(_ t: String) {
+        var tags = draft?.tags ?? []
+        if tags.contains(t) { tags.removeAll { $0 == t } } else { tags.append(t) }
+        draft?.tags = tags.isEmpty ? nil : tags
+    }
+
+    private func addTag() {
         let t = newTag.trimmingCharacters(in: .whitespaces)
         guard !t.isEmpty else { return }
-        model.setTags(r, (r.tags ?? []) + [t]); newTag = ""
+        if !(draft?.tags ?? []).contains(t) { draft?.tags = (draft?.tags ?? []) + [t] }
+        newTag = ""
+    }
+
+    private func save() {
+        guard var r = draft else { return }
+        r.name = r.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !r.name.isEmpty else { model.say("A recipe needs a name"); return }
+        if model.update(r) { dismiss() }
     }
 }

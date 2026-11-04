@@ -95,6 +95,11 @@ final class Tools: @unchecked Sendable {
         ["name": "fuji_tag", "description": "Add or remove tags on a recipe (\"Leica style\", \"Warm\", \"Cool\", \"B&W\", \"Bright day\", \"Night\", \"Film\", \"Punchy\", \"Soft\", or the owner's own). Tags describe the look; the app filters by them.",
          "inputSchema": ["type": "object", "properties": ["recipe": recipeArg, "add": ["type": "array", "items": ["type": "string"]], "remove": ["type": "array", "items": ["type": "string"]]], "required": ["recipe"]],
          "annotations": ["readOnlyHint": false, "destructiveHint": false]],
+        ["name": "fuji_edit_recipe", "description": "Change a recipe's name, description (notes), status (favorite, mine, tried, to-try, rejected), creator or source link. Only the fields given change; the slug stays, so its photos stay. Camera settings aren't edited here (save a new recipe instead).",
+         "inputSchema": ["type": "object", "properties": ["recipe": recipeArg, "name": ["type": "string"], "notes": ["type": "string"],
+                                                          "status": ["type": "string", "enum": Values.status], "creator": ["type": "string"], "url": ["type": "string"]],
+                         "required": ["recipe"]],
+         "annotations": ["readOnlyHint": false, "destructiveHint": false]],
         ["name": "fuji_plan_write", "description": """
          Prepare writing recipes to the camera's custom slots WITHOUT writing; returns a plan id and a preview of every change (slot, old → new, field by field) to show the user. Operations:
          • {slot: "C3", recipe: "<slug or name>", name?: "<slot name, ≤25 ASCII>"} — a library recipe into a slot
@@ -168,6 +173,20 @@ final class Tools: @unchecked Sendable {
             r.tags = tags.isEmpty ? nil : tags
             try library.save(r, allowDuplicate: true)
             return ["recipe": r.slug, "tags": tags] as JSON
+        case "fuji_edit_recipe":
+            var r = try library.recipe(str(a, "recipe"))
+            if let v = a["name"] as? String, !v.trimmingCharacters(in: .whitespaces).isEmpty { r.name = v.trimmingCharacters(in: .whitespaces) }
+            if let v = a["notes"] as? String { r.notes = v.isEmpty ? nil : v }
+            if let v = a["status"] as? String {
+                guard Values.status.contains(v) else { throw ToolError("status must be one of \(Values.status.joined(separator: ", "))") }
+                r.status = v
+            }
+            for key in ["creator", "url"] {
+                guard let v = a[key] as? String else { continue }
+                if r.source == nil { r.source = Recipe.Source(kind: "manual") }
+                if key == "creator" { r.source?.creator = v.isEmpty ? nil : v } else { r.source?.url = v.isEmpty ? nil : v }
+            }
+            return plain(try library.save(r, allowDuplicate: true))
         case "fuji_plan_write": return try await planWrite(a["operations"] as? [JSON] ?? [])
         case "fuji_apply_write": return try await applyWrite(str(a, "planId"))
         default: throw ToolError("Unknown tool \(name).")
