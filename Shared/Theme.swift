@@ -166,13 +166,20 @@ struct PhotoTile: View {
                     .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                     .clipped()
             } else {
-                Theme.raised.overlay {
-                    if path == nil || missing {
-                        Text(placeholder).font(.system(size: 10.5)).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(4)
+                if path == nil || missing {
+                    // No photo for this one yet: a quiet tile with an aperture mark, no words.
+                    Theme.raised.opacity(0.55).overlay {
+                        Image(systemName: "camera.aperture").font(.system(size: 15, weight: .light))
+                            .foregroundStyle(Theme.ink.opacity(0.18))
                     }
+                    .help(placeholder.isEmpty ? "" : "No photo yet")
+                    .accessibilityLabel("No photo yet")
+                } else {
+                    Shimmer()   // loading
                 }
             }
         }
+        .animation(.easeOut(duration: 0.25), value: image != nil)
         .task(id: "\(path ?? "")#\(maxPixel)") {
             image = nil; missing = false
             guard let path else { return }
@@ -186,6 +193,32 @@ struct PhotoTile: View {
 /// size, modification date and pixel size, so an edited photo gets a new one), else decoded from the photo and saved.
 /// Decoding runs in parallel off the actor (it used to run one photo at a time), and a photo asked for twice at once
 /// is decoded once.
+/// Skeleton while a photo loads: the tile's grey with a soft light sweeping across (still with Reduce Motion).
+struct Shimmer: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var phase: CGFloat = -1
+
+    var body: some View {
+        GeometryReader { g in
+            Theme.raised
+                .overlay {
+                    if !reduceMotion {
+                        LinearGradient(colors: [.clear, Color.white.opacity(0.45), .clear], startPoint: .leading, endPoint: .trailing)
+                            .frame(width: g.size.width * 0.6)
+                            .offset(x: phase * g.size.width * 1.3)
+                            .blendMode(.plusLighter)
+                    }
+                }
+                .clipped()
+        }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) { phase = 1 }
+        }
+        .accessibilityLabel("Loading photo")
+    }
+}
+
 actor ThumbCache {
     static let shared = ThumbCache()
     private var cache: [String: CGImage] = [:]
