@@ -15,7 +15,7 @@ struct InboxView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
-                    InkHeadline(text: "new looks.", size: regular ? 40 : 34)
+                    InkHeadline(text: "add recipes.", size: regular ? 40 : 34)
                     Text("Recipes you saved from reels and posts. Paste them here; Claude reads them on your Mac, then keep the ones you want to try.")
                         .font(regular ? .title3 : .body).foregroundStyle(.secondary)
                 }

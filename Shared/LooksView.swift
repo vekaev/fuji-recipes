@@ -13,9 +13,9 @@ struct LooksView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     VStack(alignment: .leading, spacing: 6) {
-                        InkHeadline(text: "looks.", size: regular ? 40 : 34)
-                        Text(model.recipes.isEmpty ? "Your recipes appear here. Add some in New looks, or ask Claude to find the ones in your photos."
-                                                   : regular ? "How each recipe looks. Click a photo to see it big, drag a look onto a slot." : "How each recipe looks. Tap a photo to see it big.")
+                        InkHeadline(text: "recipes.", size: regular ? 40 : 34)
+                        Text(model.recipes.isEmpty ? "Your recipes appear here. Add some in Add recipes, or ask Claude to find the ones in your photos."
+                                                   : regular ? "How each recipe looks. Click a photo to see it big, drag a recipe onto a slot." : "How each recipe looks. Tap a photo to see it big.")
                             .font(regular ? .title3 : .body).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         #if os(iOS)
                         Button(model.recipes.isEmpty ? "Choose your Fuji Recipes folder" : "Library: \(model.library.root.lastPathComponent)") { model.pickingLibrary = true }
@@ -179,7 +179,7 @@ struct SlotColumn: View {
         VStack(alignment: .leading, spacing: 8) {
             InkHeadline(text: model.connected ? (model.info?.model.lowercased() ?? "camera") + "." : "camera.", size: 30)
             if model.connected {
-                Text("Drop a look on a slot, click one for its history and settings. On the camera: dial on C, then Q.").font(.system(size: 12.5)).foregroundStyle(.secondary)
+                Text("Drop a recipe on a slot, click one for its history and settings. On the camera: dial on C, then Q.").font(.system(size: 12.5)).foregroundStyle(.secondary)
                 ScrollView {
                     VStack(spacing: 6) {
                         ForEach(model.slots.filter { !$0.dial }) { SlotDropRow(slot: $0) }
@@ -193,7 +193,7 @@ struct SlotColumn: View {
                     Pill(title: "Review \(model.changes.count) change\(model.changes.count > 1 ? "s" : "")", wide: true) { model.sheet = .review }
                 }
             } else {
-                Text("Plug in your Fujifilm to drop looks on its slots.").font(.system(size: 12.5)).foregroundStyle(.secondary)
+                Text("Plug in your Fujifilm to drop recipes on its slots.").font(.system(size: 12.5)).foregroundStyle(.secondary)
                 Button("How to connect") { model.sheet = .connect }.buttonStyle(.plain).pointer().font(.system(size: 13, weight: .semibold)).padding(.top, 4)
                 Spacer()
             }

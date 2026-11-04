@@ -187,7 +187,7 @@ struct SlotDetail: View {
     }
 
     private func subtitle(_ s: AppModel.Slot, _ r: Recipe?, _ hist: [SlotRecord]) -> String {
-        if s.unused && !s.changed { return "Nothing here yet. Drop or pick a look below." }
+        if s.unused && !s.changed { return "Nothing here yet. Drop or pick a recipe below." }
         var p: [String] = []
         if s.changed { p.append(model.askBeforeWriting ? "changed, not on the camera yet" : "writing…") }
         if let from = hist.first?.from { p.append("since \(AppModel.short(from))") }

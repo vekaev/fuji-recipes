@@ -22,8 +22,8 @@ struct FujiRecipesApp: App {
         .commands {
             CommandGroup(after: .appInfo) { CheckForUpdatesButton() }
             CommandGroup(after: .sidebar) {
-                Button("Looks") { model.tab = .looks }.keyboardShortcut("1")
-                Button("New Looks") { model.tab = .inbox }.keyboardShortcut("2")
+                Button("Recipes") { model.tab = .looks }.keyboardShortcut("1")
+                Button("Add Recipes") { model.tab = .inbox }.keyboardShortcut("2")
             }
             CommandMenu("Camera") {
                 Button("Check Connection") { Task { await model.check() } }.keyboardShortcut("r")
@@ -50,7 +50,7 @@ struct FujiRecipesApp: App {
                 UpdatePreferences()
                 Section {
                     Toggle("Ask before writing to the camera", isOn: $model.askBeforeWriting)
-                Text("Off: a look you put in a slot is written right away. Each write saves that slot first, reads it back, and the message offers Undo.")
+                Text("Off: a recipe you put in a slot is written right away. Each write saves that slot first, reads it back, and the message offers Undo.")
                     .font(.caption).foregroundStyle(.secondary)
                 Picker("Appearance", selection: $appearance) {
                     ForEach(AppAppearance.allCases) { Text($0.label).tag($0) }

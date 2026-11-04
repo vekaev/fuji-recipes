@@ -36,13 +36,13 @@ for Mac, iPhone and iPad run on the same `FujiKit`. Why this app and not another
 **Fuji Recipes** (early) in [Photo Minimalist](https://github.com/vekaev/photo-minimalist)'s style. You pick a recipe
 by how it looks, not by its numbers, so the photos come first and the settings sit behind "Settings ›".
 
-- **Looks**: every recipe as its name, a short description, three photos (tap for the big preview), tags such as
+- **Recipes**: every recipe as its name, a short description, three photos (tap for the big preview), tags such as
   B&W or "Leica style". Edit › renames it and changes its description, status, tags and source.
   On the Mac and a wide iPad the camera's slots sit beside it: drag a look onto a slot.
-- **Camera**: C1–C7 and the dial's FS1–FS3 with the look in each. A slot shows since when it holds that look, when
+- **The camera** (beside the recipes on Mac / iPad, its own tab on iPhone): C1–C7 and the dial's FS1–FS3 with the look in each. A slot shows since when it holds that look, when
   you last shot with it, looks to swap in, and its history, so you can put the old one back. Changes are staged and
   written in one go after a review: a backup of every slot first, a read-back after. FS1–FS3 are read only for now.
-- **Inbox**: paste or drop Instagram / TikTok / YouTube links (many at once) or Instagram's saved-posts export.
+- **Add recipes**: paste or drop Instagram / TikTok / YouTube links (many at once) or Instagram's saved-posts export.
   Claude reads the reels on the Mac (`/recipe`, `fuji_inbox`), and you keep or skip each one here.
 - No camera yet: a step-by-step guide to the camera's USB mode, with a live connection check.
 

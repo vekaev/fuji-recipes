@@ -25,9 +25,9 @@ struct RootView: View {
                 #endif
             } else {
                 TabView(selection: $model.tab) {
-                    page(.looks).tabItem { Label("Looks", systemImage: "square.grid.2x2") }.tag(AppModel.Tab.looks)
+                    page(.looks).tabItem { Label("Recipes", systemImage: "square.grid.2x2") }.tag(AppModel.Tab.looks)
                     page(.camera).tabItem { Label(model.connected ? (model.info?.model ?? "Camera") : "Camera", systemImage: "camera") }.tag(AppModel.Tab.camera)
-                    page(.inbox).tabItem { Label("New looks", systemImage: "plus.square.on.square") }.tag(AppModel.Tab.inbox)
+                    page(.inbox).tabItem { Label("Add", systemImage: "plus.square.on.square") }.tag(AppModel.Tab.inbox)
                         .badge(model.toReview.count)
                 }
                 .tint(Theme.ink)
@@ -112,10 +112,10 @@ private struct TopBar: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            tab(.looks) { Text("Looks") }
+            tab(.looks) { Text("Recipes") }
             tab(.inbox) {
                 HStack(spacing: 4) {
-                    Text("New looks")
+                    Text("Add recipes")
                     if model.toReview.count + model.queuedCount > 0 { Text("\(model.toReview.count + model.queuedCount)").foregroundStyle(.secondary).monospacedDigit() }
                 }
             }
