@@ -148,6 +148,7 @@ struct PhotoTile: View {
     let path: String?
     var maxPixel = 480
     var fit = false
+    var fitPortrait = false
     var placeholder = "not rendered yet"
     @State private var image: CGImage?
     @State private var missing = false
@@ -155,7 +156,13 @@ struct PhotoTile: View {
     var body: some View {
         ZStack {
             if let image {
-                Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: fit ? .fit : .fill)
+                // Never let the photo size the tile: it always takes exactly the space it's given.
+                // Portrait photos fit inside (whole photo, narrower) instead of being cut to the tile.
+                let portrait = image.height > image.width
+                Image(decorative: image, scale: 1).resizable()
+                    .aspectRatio(contentMode: fit || (portrait && fitPortrait) ? .fit : .fill)
+                    .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                    .clipped()
             } else {
                 Theme.raised.overlay {
                     if path == nil || missing {
@@ -234,16 +241,21 @@ extension View {
 }
 
 /// A photo cropped to a fixed shape (fills it, never spills out), rounded.
+/// A photo in a fixed-ratio tile: the tile's size comes from the width it's offered and `ratio` only, never from the
+/// photo. Landscape photos fill it; portrait ones fit inside on a quiet background (`fitPortrait`, default on).
 struct PhotoCell: View {
     let path: String?
     var ratio: CGFloat = 1
     var maxPixel = 480
     var radius: CGFloat = 8
+    var fitPortrait = true
     var placeholder = "not rendered yet"
     var body: some View {
         Color.clear
             .aspectRatio(ratio, contentMode: .fit)
-            .overlay(PhotoTile(path: path, maxPixel: maxPixel, placeholder: placeholder))
+            .frame(maxWidth: .infinity)
+            .overlay { PhotoTile(path: path, maxPixel: maxPixel, fitPortrait: fitPortrait, placeholder: placeholder) }
+            .background(Theme.raised)
             .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
             .contentShape(Rectangle())
     }

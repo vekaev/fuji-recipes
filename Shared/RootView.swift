@@ -140,6 +140,8 @@ private struct TopBar: View {
 /// outside closes, like Quick Look in Photo Minimalist.
 struct PreviewOverlay: View {
     @Environment(AppModel.self) private var model
+    @FocusState private var focused: Bool
+    @State private var drag: CGFloat = 0
 
     var body: some View {
         if let p = model.preview {
@@ -151,28 +153,35 @@ struct PreviewOverlay: View {
                         Text("\(p.index + 1) / \(p.paths.count)").font(.system(size: 13)).foregroundStyle(.white.opacity(0.6)).monospacedDigit()
                         Spacer()
                         Button { model.preview = nil } label: { Image(systemName: "xmark").font(.system(size: 15, weight: .medium)).foregroundStyle(.white).frame(width: 36, height: 36) }
-                            .buttonStyle(.plain).accessibilityLabel("Close")
+                            .buttonStyle(.plain).accessibilityLabel("Close").keyboardShortcut(.cancelAction)
                     }
-                    TabView(selection: Binding(get: { p.index }, set: { model.preview?.index = $0 })) {
-                        ForEach(Array(p.paths.enumerated()), id: \.offset) { i, path in
-                            PhotoTile(path: path, maxPixel: 2400, fit: true).tag(i)
-                        }
-                    }
-                    #if os(iOS)
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                    #else
-                    .tabViewStyle(.automatic)
-                    #endif
+                    // One photo at a time (no TabView: on the Mac it draws an empty tab bar). Swipe or ← → to move.
+                    PhotoTile(path: p.paths[p.index], maxPixel: 2400, fit: true)
+                        .id(p.index)
+                        .offset(x: drag)
+                        .contentShape(Rectangle())
+                        .gesture(DragGesture(minimumDistance: 20)
+                            .onChanged { drag = $0.translation.width * 0.6 }
+                            .onEnded { v in
+                                let w = v.translation.width
+                                if w < -60 { step(1) } else if w > 60 { step(-1) }
+                                withAnimation(.easeOut(duration: 0.15)) { drag = 0 }
+                            })
+                        .transition(.opacity)
                     HStack(spacing: 18) {
-                        Button { step(-1) } label: { Image(systemName: "chevron.left") }.disabled(p.index == 0)
+                        Button { step(-1) } label: { Image(systemName: "chevron.left").frame(width: 32, height: 32) }.disabled(p.index == 0)
                         Text(URL(fileURLWithPath: p.paths[p.index]).lastPathComponent).font(.system(size: 12)).foregroundStyle(.white.opacity(0.6))
-                        Button { step(1) } label: { Image(systemName: "chevron.right") }.disabled(p.index == p.paths.count - 1)
+                        Button { step(1) } label: { Image(systemName: "chevron.right").frame(width: 32, height: 32) }.disabled(p.index == p.paths.count - 1)
                     }
                     .buttonStyle(.plain).foregroundStyle(.white).font(.system(size: 17, weight: .medium))
                 }
                 .padding(24)
+                #if os(iOS)
+                .padding(.bottom, 56)   // clear of the floating tab bar
+                #endif
             }
-            .focusable().focusEffectDisabled()
+            .focusable().focusEffectDisabled().focused($focused)
+            .onAppear { focused = true }
             .onKeyPress(.leftArrow) { step(-1); return .handled }
             .onKeyPress(.rightArrow) { step(1); return .handled }
             .onKeyPress(.escape) { model.preview = nil; return .handled }
