@@ -242,13 +242,13 @@ extension View {
 
 /// A photo cropped to a fixed shape (fills it, never spills out), rounded.
 /// A photo in a fixed-ratio tile: the tile's size comes from the width it's offered and `ratio` only, never from the
-/// photo. Landscape photos fill it; portrait ones fit inside on a quiet background (`fitPortrait`, default on).
+/// photo. Every photo fills it (portrait ones are cropped to the tile; the preview shows them whole).
 struct PhotoCell: View {
     let path: String?
     var ratio: CGFloat = 1
     var maxPixel = 480
     var radius: CGFloat = 8
-    var fitPortrait = true
+    var fitPortrait = false
     var placeholder = "not rendered yet"
     var body: some View {
         Color.clear
