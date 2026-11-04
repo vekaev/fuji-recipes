@@ -37,13 +37,14 @@ FujiRecipes/
 ## Run: from a reel, post or screenshots
 
 1. **Read the source.** For a link, read the whole reel (frames, caption, comments, speech) with
-   the `video-transcribe` skill if it's installed (`/transcribe <url> --visual`: local Whisper + on-screen OCR +
+   the `transcribe` skill if it's installed (`/transcribe <url> --visual`: local Whisper + on-screen OCR +
    contact sheets); otherwise download it with `yt-dlp`, cut frames with `ffmpeg` and read them, or ask for screenshots
    (retry once with `--cookies-from-browser chrome` on a login wall). Read the note's caption, the first
    comments (creators often post the recipe there, or answer "what WB?"), the `## On screen` OCR, and look
    at every contact sheet: settings cards are often a single fast frame. For screenshots, read them
-   directly. For a carousel photo post (`/p/` without video) say it can't be fetched and ask for
-   screenshots.
+   directly. For a carousel photo post (`/p/` without video) the transcribe script can't fetch it: open it in the
+   built-in browser (no login needed), step through the slides (Next button), download each full-size slide and read
+   it; settings cards are usually the last slides. Without a browser, ask for screenshots.
 2. **Extract** every field into the schema. Abbreviations are listed at the end of schema.md. Where the
    screen and the caption disagree, the screen wins; where speech adds something ("I push highlights to
    −1.5 in summer"), put it in `notes`. A field nobody gives stays at the camera default and goes into
