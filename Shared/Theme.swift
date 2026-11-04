@@ -1,3 +1,4 @@
+import ImageIO
 import SwiftUI
 #if os(macOS)
 import AppKit
@@ -180,20 +181,63 @@ struct PhotoTile: View {
     }
 }
 
+/// Thumbnails for tiles and the preview. Memory first, then a small JPEG on disk (Caches/thumbs, keyed by path, file
+/// size, modification date and pixel size, so an edited photo gets a new one), else decoded from the photo and saved.
+/// Decoding runs in parallel off the actor (it used to run one photo at a time), and a photo asked for twice at once
+/// is decoded once.
 actor ThumbCache {
     static let shared = ThumbCache()
     private var cache: [String: CGImage] = [:]
+    private var order: [String] = []
+    private var inflight: [String: Task<CGImage?, Never>] = [:]
 
-    func image(_ path: String, maxPixel: Int) -> CGImage? {
+    func image(_ path: String, maxPixel: Int) async -> CGImage? {
         let key = "\(path)#\(maxPixel)"
         if let hit = cache[key] { return hit }
-        guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
+        if let running = inflight[key] { return await running.value }
+        let task = Task.detached(priority: .userInitiated) { ThumbCache.load(path, maxPixel: maxPixel) }
+        inflight[key] = task
+        let image = await task.value
+        inflight[key] = nil
+        if let image {
+            cache[key] = image; order.append(key)
+            if order.count > 400 { cache[order.removeFirst()] = nil }   // ~400 thumbnails in memory at most
+        }
+        return image
+    }
+
+    nonisolated static let folder: URL = {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        let dir = base.appendingPathComponent(Bundle.main.bundleIdentifier ?? "app.fujirecipes").appendingPathComponent("thumbs")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
+    nonisolated static func load(_ path: String, maxPixel: Int) -> CGImage? {
+        let url = URL(fileURLWithPath: path)
+        let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+        let size = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
+        let date = (attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        let cached = folder.appendingPathComponent(String(format: "%016llx", fnv("\(path)|\(size)|\(Int(date))|\(maxPixel)")) + ".jpg")
+        if let src = CGImageSourceCreateWithURL(cached as CFURL, nil), let cg = CGImageSourceCreateImageAtIndex(src, 0, nil) {
+            return cg
+        }
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
               let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
                                                                    kCGImageSourceCreateThumbnailWithTransform: true,
                                                                    kCGImageSourceThumbnailMaxPixelSize: maxPixel] as CFDictionary)
         else { return nil }
-        cache[key] = cg
+        if let dest = CGImageDestinationCreateWithURL(cached as CFURL, "public.jpeg" as CFString, 1, nil) {
+            CGImageDestinationAddImage(dest, cg, [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary)
+            CGImageDestinationFinalize(dest)
+        }
         return cg
+    }
+
+    nonisolated static func fnv(_ s: String) -> UInt64 {
+        var h: UInt64 = 0xcbf29ce484222325
+        for b in s.utf8 { h = (h ^ UInt64(b)) &* 0x100000001b3 }
+        return h
     }
 }
 

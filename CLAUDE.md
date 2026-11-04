@@ -32,6 +32,9 @@ Decisions and why: `docs/adr/`. Words: `GLOSSARY.md`. Research: `docs/research/b
    swift test
    ```
 5. Restart both apps with the new build (no need to ask): `scripts/install-mac.sh` and `scripts/run-ios-sim.sh`.
+   install-mac.sh signs the installed copy with the owner's Apple Development certificate, so macOS keeps its
+   permissions (Downloads / Desktop photos, camera) across rebuilds. Never ad-hoc sign the owner's copy: every
+   reinstall would ask again. Public release builds stay ad-hoc (others don't have the certificate).
    Simulator tools: always pass `device: "03B18753-A9C9-4A8C-9ADC-3BA0FB353BA7"` (iPhone 17 Pro; "DayGate Test" is
    another project's). MCP changes: `scripts/dev-install.sh`.
 6. Check on screen (simulator screenshots; the Mac via computer-use, never clicking in the owner's open window
@@ -75,6 +78,7 @@ Shared with `/recipe` and `fuji mcp`: field names in skills/fuji-recipes/referen
 | Looks (name, scenes/photos, tags, filter chips, settings behind ›) | ✓ | ✓ (iPad regular = Mac layout) | `fuji_recipes`, `fuji_recipe` |
 | Edit a recipe: name, description, status, tags, creator + link (slug and photos stay; settings read only) | ✓ Edit › or click the name, right-click "Edit…"; Save / Cancel (↵ / Esc) | ✓ Edit › or tap the name | `fuji_edit_recipe`, `fuji_tag` |
 | Photo tiles: fixed size from width + ratio, every photo fills (portrait cropped; the preview shows it whole) | ✓ | ✓ | — |
+| Fast photos: thumbnails decoded in parallel, kept as small JPEGs in Caches/thumbs (keyed by path, size, date, pixels) | ✓ | ✓ | — |
 | Click/tap an image → preview, arrows / swipe between images and recipes | ✓ (Space / Esc) | ✓ (tap, swipe) | — |
 | Camera page: slots with looks, selected slot's history, swap in, review "now → new", write | ✓ drag a look onto a slot or pick | ✓ tap a slot, pick a look | `fuji_slots`, `fuji_plan_write` / `fuji_apply_write` |
 | Slot history + Put back | ✓ | ✓ | `fuji_slot_history` |
