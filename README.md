@@ -88,7 +88,11 @@ library.md             generated index
 
 Slot writes work over plain USB on X-T5, X-H2/H2S, X100VI, X-T50, **X-E5**, X-S20, X-M5, X-S10, X-T30 II, GFX100S,
 GFX100 II, GFX100RF; X100V partly. Not on X-T3, X-T30 and older (no slot properties) or X-Pro3. X-T4 and X-E4:
-untested. FS1–FS3 on a film simulation dial can't be written over USB.
+untested. FS1–FS3 on the X-E5's film simulation dial are **read** from the camera's settings file (`fuji slots`;
+`fuji backup --full` saves that whole file, like X Acquire); writing them is not supported yet.
+
+First real-camera run (X-E5 fw 1.12, 2026-11-04): mode detection, all 7 slots, the live settings, the 70,524-byte
+settings file and FS1–FS3 read correctly; FS1 matched the recipe in 39 of the owner's JPEGs. No writes yet.
 
 **Warranty:** Fujifilm reportedly says connecting unlicensed software may void the warranty. Slot writes are
 ordinary PTP property sets, no bricked camera has been reported, and a stuck camera recovers by switching it off

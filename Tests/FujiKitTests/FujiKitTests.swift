@@ -97,3 +97,19 @@ final class CameraTests: XCTestCase {
         XCTAssertEqual(mode, .cardReader)
     }
 }
+
+final class SettingsFileTests: XCTestCase {
+    /// FS1 bytes as read from the owner's X-E5 (fw 1.12), checked against the EXIF of 39 photos shot with it.
+    func testXE5DialSlotDecodes() throws {
+        var d = Data("FUJIFILM".utf8) + Data(count: SettingsFile.xe5.size - 8)
+        let fs1: [String: Int] = ["film": 16, "wb": 0, "nr": 0, "clarity": 6, "wc": 18, "mg": 18, "dr": 1, "color": 6, "sharp": 6,
+                                  "hi": 0, "sh": 2, "cc": 2, "fxb": 2, "grain": 0, "gsize": 1, "r": 9, "b": 9]
+        for (k, v) in fs1 { d[SettingsFile.xe5.fields[k]!.offset] = UInt8(v) }
+        let s = try XCTUnwrap(SettingsFile.dialSlots(d, model: "X-E5")?.first).settings
+        XCTAssertEqual(s.film, "Classic Neg."); XCTAssertEqual(s.grainRoughness, "Strong"); XCTAssertEqual(s.grainSize, "Large")
+        XCTAssertEqual(s.colorChrome, "Strong"); XCTAssertEqual(s.colorChromeFxBlue, "Strong"); XCTAssertEqual(s.dynamicRange, "DR100")
+        XCTAssertEqual(s.highlight, -2); XCTAssertEqual(s.shadow, -1); XCTAssertEqual(s.color, 1)
+        XCTAssertEqual(s.sharpness, -2); XCTAssertEqual(s.highIsoNr, -4); XCTAssertEqual(s.clarity, 0)
+        XCTAssertNil(SettingsFile.dialSlots(d, model: "X-T5"))
+    }
+}

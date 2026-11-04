@@ -89,7 +89,7 @@ final class Tools: @unchecked Sendable {
     let definitions: [JSON] = [
         ["name": "fuji_camera", "description": "Is a Fujifilm camera connected over USB? Model, firmware, USB mode (must be USB RAW CONV./BACKUP RESTORE to read or write slots), number of custom slots, and what to do if it isn't found.",
          "inputSchema": ["type": "object", "properties": [:]], "annotations": ro],
-        ["name": "fuji_slots", "description": "Read every custom slot (C1–C7, C1–C4 on X-S20 / X-M5) from the connected camera: name, settings, a one-line summary, and which library recipe it matches. Reading changes nothing.",
+        ["name": "fuji_slots", "description": "Read every custom slot (C1–C7, C1–C4 on X-S20 / X-M5) from the connected camera: name, settings, a one-line summary, and which library recipe it matches. On an X-E5 also the film simulation dial's FS1–FS3 (read only, from the camera's settings file; WB shift and mono toning there are unverified). Reading changes nothing.",
          "inputSchema": ["type": "object", "properties": [:]], "annotations": ro],
         ["name": "fuji_recipes", "description": "List the recipe library (~/Documents/FujiRecipes): slug, name, status (favorite, mine = shot with it, tried, to-try, rejected), film, one-line summary, shots, source.",
          "inputSchema": ["type": "object", "properties": ["status": ["type": "string", "enum": Values.status], "film": ["type": "string"], "query": ["type": "string", "description": "Text in the name, slug, creator or notes"]]], "annotations": ro],
@@ -202,11 +202,23 @@ final class Tools: @unchecked Sendable {
     func slots() async throws -> Any {
         let cam = try await Cameras.shared.require()
         let banks = try await cam.readAll()
-        return banks.map { b -> JSON in
+        var out = banks.map { b -> JSON in
             var o: JSON = ["slot": b.slot, "name": b.name, "summary": b.settings.summary, "settings": plain(b.settings)]
             if let r = library.match(b.settings) { o["recipe"] = r.slug; o["recipeName"] = r.name }
             return o
         }
+        // Film simulation dial (X-E5): FS1–FS3 live only in the camera's settings file. Read-only.
+        let info = try await cam.deviceInfo()
+        if SettingsFile.layout(model: info.model) != nil, let file = try? await cam.downloadSettingsBackup(),
+           let dial = SettingsFile.dialSlots(file, model: info.model) {
+            out += dial.map { d -> JSON in
+                var o: JSON = ["slot": d.slot, "readOnly": true, "summary": d.settings.summary, "settings": plain(d.settings),
+                               "unverified": d.unverified]
+                if let r = library.match(d.settings) { o["recipe"] = r.slug; o["recipeName"] = r.name }
+                return o
+            }
+        }
+        return out
     }
 
     func recipes(_ a: JSON) throws -> Any {

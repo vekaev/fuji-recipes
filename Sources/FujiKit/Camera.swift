@@ -236,4 +236,18 @@ public actor FujiCamera {
     public func restoreBank(_ bank: Bank) async throws -> WriteReport {
         try await writeBank(bank.index, settings: bank.settings, name: bank.name)
     }
+
+    /// The camera's full settings backup (what X Acquire / FUJIFILM TETHER APP save as .dat): PTP object handle 0,
+    /// read with GetObjectInfo + GetObject. Read-only. Starts with "FUJIFILM" (libfuji fuji_usb.c, grawji camera_backup.py).
+    /// Holds every setting incl. the film simulation dial's FS1–FS3 recipes; its layout is undocumented for X-Processor 5.
+    public func downloadSettingsBackup() async throws -> Data {
+        let infoR = try await transport.send(0x1008, [0], data: nil)
+        guard infoR.ok else { throw CameraError("GetObjectInfo(0): \(PTPCode.describe(infoR.code))") }
+        let r = try await transport.send(0x1009, [0], data: nil)
+        guard r.ok else { throw CameraError("GetObject(0): \(PTPCode.describe(r.code))") }
+        guard r.data.count > 0x40, r.data.prefix(8) == Data("FUJIFILM".utf8) else {
+            throw CameraError("The settings backup doesn't start with FUJIFILM (\(r.data.count) bytes); not saving it.")
+        }
+        return r.data
+    }
 }

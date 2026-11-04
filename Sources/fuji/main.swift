@@ -52,8 +52,9 @@ func cli() -> Int32 {
             var out: [String] = []
             let info = try await cam.transport.send(PTPOp.getDeviceInfo, [], data: nil)
             out.append("GetDeviceInfo: \(PTPCode.describe(info.code)), \(info.data.count) bytes")
-            out.append("advertised properties: " + DeviceInfo.properties(info.data).map { String(format: "%04X", $0) }.joined(separator: " "))
-            for code: UInt16 in [0xD16E, 0xD15D, 0xD18C, 0xD18D, 0xD192, 0xD001, 0x5005, 0xD36B] {
+            if rest.isEmpty { out.append("advertised properties: " + DeviceInfo.properties(info.data).map { String(format: "%04X", $0) }.joined(separator: " ")) }
+            let asked = rest.compactMap { UInt16($0.replacingOccurrences(of: "0x", with: ""), radix: 16) }
+            for code: UInt16 in asked.isEmpty ? [0xD16E, 0xD15D, 0xD18C, 0xD18D, 0xD192, 0xD001, 0x5005, 0xD36B] : asked {
                 let r = try await cam.get(code)
                 out.append(String(format: "0x%04X → ", code) + "\(PTPCode.describe(r.code)) " + r.data.map { String(format: "%02x", $0) }.joined(separator: " "))
             }
@@ -65,7 +66,23 @@ func cli() -> Int32 {
     case "show":
         guard let q = rest.first else { print("usage: fuji show <recipe>"); return 2 }
         do { let r = try tools.library.recipe(q); print("\(r.name)\n\n\(r.settings.text)"); return 0 } catch { return fail(error) }
-    case "backup": return runTool("fuji_backup", ["reason": "fuji backup"])
+    case "backup":
+        if rest.contains("--full") {
+            // The camera's whole settings file (like X Acquire's .dat), next to the slot backups. Read-only.
+            let r = blocking { () async throws -> String in
+                let cam = try await Cameras.shared.require()
+                let info = try await cam.deviceInfo()
+                let data = try await cam.downloadSettingsBackup()
+                let dir = tools.library.root.appendingPathComponent("backups")
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                let stamp = Date().isoStamp.prefix(19).replacingOccurrences(of: ":", with: "")
+                let url = dir.appendingPathComponent("\(stamp)-\(Recipe.slugify(info.model))-settings.dat")
+                try data.write(to: url)
+                return "\(url.path) (\(data.count) bytes)"
+            }
+            switch r { case .success(let s): print(s); return 0; case .failure(let e): return fail(e) }
+        }
+        return runTool("fuji_backup", ["reason": "fuji backup"])
     case "guide": print(Guide.text); return 0
     case "index":
         do { try tools.library.writeIndex(); print(tools.library.indexFile.path); return 0 } catch { return fail(error) }
