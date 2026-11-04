@@ -52,8 +52,8 @@ public enum USBMode: Equatable, Sendable {
         }
     }
     /// Where the setting is on the camera.
-    public static let howToSet = "On the camera: \(USBMode.menuPath), then unplug the cable and plug it in again."
-    public static let menuPath = "MENU ▸ SET UP ▸ NETWORK/USB SETTING ▸ CONNECTION MODE (older bodies: CONNECTION SETTING ▸ PC CONNECTION MODE) ▸ USB RAW CONV./BACKUP RESTORE"
+    public static let howToSet = "On the camera: \(USBMode.menuPath). Then switch the camera off, connect the USB-C cable, and switch it on (quit Preview or Photos if they grab the camera)."
+    public static let menuPath = "MENU/OK ▸ network/USB tab ▸ CONNECTION MODE ▸ USB RAW CONV./BACKUP RESTORE, and on the same tab USB POWER SUPPLY/COMM SETTING ▸ AUTO (or POWER SUPPLY OFF/COMM ON); older bodies: SET UP ▸ CONNECTION SETTING ▸ PC CONNECTION MODE"
     public var canWriteSlots: Bool { self == .rawConvBackupRestore || self == .tether }
     public var label: String {
         switch self {
