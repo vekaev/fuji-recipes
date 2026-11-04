@@ -2,3 +2,7 @@
 .swiftpm/
 *.xcodeproj/
 dist/
+
+# Mac app (XcodeGen)
+FujiRecipes.xcodeproj/
+build/

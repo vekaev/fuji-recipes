@@ -30,6 +30,18 @@ slots end to end against a simulated X-E5 that refuses what real bodies refuse; 
 style ([mockup](docs/mockup/index.html); its sample photos stay local) and on the same `FujiKit`. Why this app and not another
 iPhone one: [the research brief](docs/research/brief.md).
 
+## The Mac app
+
+<img src="docs/icon.png" width="64" alt="Fuji Recipes icon" align="left" />
+
+**Fuji Recipes for Mac** (early) does the same with a window, in Photo Minimalist's style: plug the camera in and it
+walks you through the USB mode with a live check, then shows C1–C7 and the dial's FS1–FS3 next to your recipes. Edit a
+slot with tick dials, load a recipe into it, and write it: a backup of every slot first, a read-back after.
+Build it with `scripts/install-mac.sh` (needs Xcode and `brew install xcodegen`); a downloadable app with
+auto-updates comes with its first release.
+
+<br clear="left">
+
 ## Install
 
 **One line in Terminal** (no security prompt):

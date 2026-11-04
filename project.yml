@@ -1,0 +1,32 @@
+name: FujiRecipes
+options:
+  bundleIdPrefix: app.fujirecipes
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+packages:
+  FujiKit:
+    path: .
+targets:
+  FujiRecipes:
+    type: application
+    platform: macOS
+    sources: [App]
+    dependencies:
+      - package: FujiKit
+        product: FujiKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.fujirecipes.mac
+        PRODUCT_NAME: Fuji Recipes
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Fuji Recipes
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.photography
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ENABLE_APP_SANDBOX: NO
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual

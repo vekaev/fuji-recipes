@@ -1,7 +1,8 @@
 # Fuji Recipes: working rules
 
 Fujifilm custom slots (C1–C7) over USB + a recipe library, for the owner and their agents. Swift package:
-`FujiKit` (shared with the future Mac / iPhone app), `fuji` (CLI + `fuji mcp`).
+`FujiKit` (camera, library, Doctor; shared by everything), `fuji` (CLI + `fuji mcp`), and the Mac app in `App/`
+(XcodeGen `project.yml`, target `FujiRecipes`, depends on the local FujiKit package).
 
 - **The library format is shared** with the `/recipe` skill in skills/fuji-recipes: field names and
   value spellings in skills/fuji-recipes/references/schema.md. Change both together.
@@ -46,4 +47,20 @@ default **USB CARD READER** shows the photos, not the settings.
 - `scripts/release.sh X.Y.Z [notes.md]` publishes (ask the owner first: releases are public). Never replace a
   release asset; a fix is a new patch release. Updates: `fuji update` reruns the installer.
 - `scripts/dev-install.sh` builds from the checkout for development.
-- When the Mac app exists: DMG + Sparkle per the ship-mac-app skill (iPhone: n/a, App Store / TestFlight).
+- When the Mac app exists: DMG + Sparkle per the ship skill (iPhone: n/a, App Store / TestFlight).
+
+## The Mac app
+
+- Build + restart: `scripts/install-mac.sh` (xcodegen → Release build → ~/Applications/Fuji Recipes.app → relaunch).
+  Restart it after every change, like Photo Minimalist. `scripts/build-app.sh` makes a DMG (the ship-mac-app
+  skill adds the white DMG window, Sparkle and the release flow when it's time to publish the app).
+- Views (`App/`): `RootView` (38 pt top bar: camera tab like a memory card, Recipes tab, status, ⋯), `SetupView`
+  (no camera: the camera's menu steps + the live Doctor check, polled every 3 s and on plug-in), `SlotsView` (slot
+  list, pane with chip + info card, read-only FS1–FS3), `SlotEditor` (280 pt, segments + `FineDial` tick rulers,
+  Revert / Write with confirm), `RecipesView` (filters, List | Grid, your sample photos), `Sheets` (C1–C7 help with
+  the dial, troubleshooting, backups). State: `AppModel` (@Observable): the only place the app writes to the camera
+  is `AppModel.write()` (backup of every slot → writeBank → read-back report).
+- The owner may have the app open with the camera connected: look (computer-use screenshot), don't click in it
+  without asking, and never write a slot to verify something.
+- iPhone / iPad: not yet. ImageCaptureCore works there (needs Control + Contents authorization); add an iOS target
+  when the Mac app settles, with a parity table like Photo Minimalist's.
