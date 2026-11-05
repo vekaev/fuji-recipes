@@ -409,7 +409,7 @@ func serve() {
     ProcessInfo.processInfo.endActivity(activity)   // stdin closed: the client is gone
 }
 
-let needsCamera = ["render", "match", "settings-restore", "mcp", "status", "slots", "backup", "call", "probe", "doctor"].contains(command)
+let needsCamera = ["render", "render-batch", "match", "settings-restore", "mcp", "status", "slots", "sync-slots", "backup", "call", "probe", "doctor"].contains(command)
 if needsCamera && !Cameras.shared.simulate { CameraBrowser.shared.start() }
 Thread.detachNewThread {
     if command == "mcp" { serve(); exit(0) }
