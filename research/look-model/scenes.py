@@ -4,8 +4,8 @@ Deterministic for the same card.
 
 - Sessions: shots sorted by time; a gap over 6 h starts a new one, unless the file numbers run on (≤ 10 apart) within
   36 h (the same outing across midnight). Shots with an unset clock (2025:01:01) are left out.
-- Split by session: test and val get ~90 scenes each, with the same mix of light (day / shade / dim / night) and of
-  as-shot dynamic range; the rest is train. Whole sessions only, so no near-identical frames cross splits.
+- Split by whole sessions, chosen by hand (SPLIT below), capped per session (CAP), so no near-identical frames cross
+  splits and no outing dominates.
 - Roles inside val and test: "owner" scenes (DR400 shots, so the camera can render DR100/200/400 on them and their
   EXIF tells nothing) are the RAWs a method gets and the eval scenes; "ref" scenes only ever appear as example photos
   (rendered JPEGs, EXIF stripped); their RAWs are never given to a method or decoded.
@@ -15,7 +15,6 @@ import json, os, random, subprocess, sys, collections, datetime
 CARD = sys.argv[1] if len(sys.argv) > 1 else "/Volumes/Untitled/DCIM"
 DATA = os.path.expanduser("~/Library/Caches/FujiRecipes/look-model")
 PER_SESSION_GAP = 30      # seconds between two picks from one session (no bursts)
-TARGET = {"train": 300, "val": 90, "test": 90}
 
 # The as-shot dynamic range is in the JPEG twin's maker notes (the RAF doesn't carry it), so read the JPEGs.
 rows = json.loads(subprocess.run(["exiftool", "-fast", "-q", "-r", "-ext", "JPG", "-j", "-n", "-DateTimeOriginal", "-BrightnessValue",
@@ -56,41 +55,21 @@ for r in shots:
 sessions.append(cur)
 
 rng = random.Random(11)
-total = sum(len(s) for s in sessions)
-thinned = []
-for s in sessions:
-    want = max(2, round(sum(TARGET.values()) * len(s) / total))
+# Whole sessions, by hand (v3): the first split gave train only 7 sessions, two of them 84% of its scenes, and the
+# encoder learned those scenes (right film 83% on them, 36% on val). DR400 shots exist in few sessions; val and test
+# each need one for their owner scenes.
+SPLIT = {"val": {"2026:10:11", "2026:09:02", "2026:08:30", "2026:08:16"}, "test": {"2026:10:14", "2026:06:20"}}
+CAP = {"val": 40, "test": 45, "train": 110}        # scenes per session, so no outing dominates
+thinned, split = [], {}
+for i, s in enumerate(sessions):
+    day = s[0]["DateTimeOriginal"][:10]
+    k = next((k for k, days in SPLIT.items() if day in days), "train")
+    split[i] = k
     pool = s[:]; rng.shuffle(pool); keep = []
     for r in pool:
-        if len(keep) >= want: break
-        if all(abs(secs(r["DateTimeOriginal"]) - secs(k["DateTimeOriginal"])) >= PER_SESSION_GAP for k in keep): keep.append(r)
+        if len(keep) >= CAP[k]: break
+        if all(abs(secs(r["DateTimeOriginal"]) - secs(c["DateTimeOriginal"])) >= PER_SESSION_GAP for c in keep): keep.append(r)
     thinned.append(sorted(keep, key=lambda r: r["DateTimeOriginal"]))
-
-
-def mix(ss):
-    c = collections.Counter(); n = 0
-    for s in ss:
-        for r in s:
-            c[light(r)] += 1; c["dr400"] += dr(r) >= 400; n += 1
-    return {k: v / max(1, n) for k, v in c.items()}
-
-
-overall = mix(thinned)
-best = None
-for t in range(4000):
-    idx = list(range(len(thinned))); rng.shuffle(idx)
-    split, sizes = {}, {"val": 0, "test": 0}
-    for i in idx:
-        k = next((k for k in ("test", "val") if sizes[k] + len(thinned[i]) <= TARGET[k] * 1.1), "train")
-        split[i] = k
-        if k != "train": sizes[k] += len(thinned[i])
-    cost = sum(abs(sizes[k] - TARGET[k]) / TARGET[k] for k in sizes)
-    for k in ("val", "test"):
-        m = mix([thinned[i] for i in split if split[i] == k])
-        cost += 2 * sum(abs(m.get(x, 0) - overall.get(x, 0)) for x in ("day", "shade", "dim", "night", "dr400"))
-        cost -= 0.08 * min(8, sum(1 for i in split if split[i] == k))   # more sessions = more independent scenes
-    if best is None or cost < best[0]: best = (cost, split)
-split = best[1]
 
 scenes = []
 for i, s in enumerate(thinned):
@@ -106,8 +85,9 @@ for k in ("val", "test"):
 for s in scenes:
     s.setdefault("role", "train")
 os.makedirs(DATA, exist_ok=True)
-json.dump(scenes, open(f"{DATA}/scenes.json", "w"), indent=1)
-print(f"{len(shots)} X-E5 RAFs, {len(sessions)} sessions, {len(scenes)} scenes -> {DATA}/scenes.json")
+OUT = f"{DATA}/scenes-card.json"
+json.dump(scenes, open(OUT, "w"), indent=1)
+print(f"{len(shots)} X-E5 RAFs, {len(sessions)} sessions, {len(scenes)} scenes -> {OUT}")
 for k in ("train", "val", "test"):
     ss = [s for s in scenes if s["split"] == k]
     c = collections.Counter(s["light"] for s in ss)

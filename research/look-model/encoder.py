@@ -110,9 +110,18 @@ def histograms(lab):
     return torch.cat(out, 1)
 
 
+HOLD_SESSIONS = 3      # whole train sessions kept out of training, for an honest quick check
+
+
 def real_groups():
-    """Training renders grouped by recipe: [(settings, [preview arrays])] with >= 3 scenes each."""
-    groups = {}
+    """Training renders by recipe, split into (train groups [(settings, [previews])] with >= 2 scenes,
+    held groups on sessions never trained on)."""
+    scenes = {x["raf"]: x for x in json.load(open(f"{DATA}/scenes.json")) if x["role"] == "train"}
+    sizes = {}
+    for x in scenes.values(): sizes[x["session"]] = sizes.get(x["session"], 0) + 1
+    ranked = sorted(sizes, key=lambda k: -sizes[k])
+    held = set(ranked[2:2 + HOLD_SESSIONS])      # mid-sized sessions: the biggest stay for training
+    tr, ho = {}, {}
     for c in sorted(glob.glob(f"{DATA}/chunks/train-??")):
         mf = c + ".manifest"
         if not os.path.exists(mf): continue
@@ -121,9 +130,21 @@ def real_groups():
             m = json.loads(l)
             if not m.get("jpeg"): continue
             j = jobs[m["line"]]
-            g = groups.setdefault(j["recipe_id"], (j["settings"], []))
+            sc = scenes.get(j["raf"])
+            if sc is None: continue    # a scene since moved to val / test
+            g = (ho if sc["session"] in held else tr).setdefault(j["recipe_id"], (j["settings"], []))
             g[1].append(common.load_render(m["jpeg"]))
-    return [g for g in groups.values() if len(g[1]) >= 3]
+    return [g for g in tr.values() if len(g[1]) >= 2], list(ho.values()), held
+
+
+def augment(img):
+    """What doesn't change a look: mirror, and a small crop back to size."""
+    if random.random() < 0.5: img = img[:, ::-1]
+    y, x = random.randint(0, 6), random.randint(0, 9)
+    h, w = img.shape[:2]
+    c = img[y:h - 6 + y, x:w - 9 + x]
+    yy = (np.arange(h) * c.shape[0] / h).astype(int); xx = (np.arange(w) * c.shape[1] / w).astype(int)
+    return c[yy][:, xx]
 
 
 def loss_fn(out, cls_t, reg_t, mask):
@@ -133,12 +154,30 @@ def loss_fn(out, cls_t, reg_t, mask):
     return l
 
 
-def batch_real(groups, n, k=3):
+def soft_vec(logits, reg):
+    """The network's answer as a differentiable recipe vector, in common.recipe_vec's layout."""
+    sm = {k: torch.softmax(v, -1) for k, v in logits.items()}
+    r = reg
+    return torch.cat([sm["film"], sm["wb"], r[:, :3], sm["dr"], r[:, 3:6], r[:, 6:8], sm["cc"], sm["fxb"], r[:, 8:9]], -1)
+
+
+def look_loss(gen, logits, reg, truth_vecs):
+    """How different the proxy's picture is with the answer vs with the true recipe, on random train scenes."""
+    n = len(truth_vecs)
+    I = torch.randint(0, len(gen.scenes), (n,), device=gen.dev)
+    raw, sc = gen.R[I], gen.S[I]
+    with torch.no_grad():
+        want = gen.model(raw, truth_vecs, sc)
+    got = gen.model(raw, soft_vec(logits, reg), sc)
+    return F.l1_loss(got, want)
+
+
+def batch_real(groups, n, k=3, aug=True):
     imgs, cls, reg, mask = [], {h: [] for h in HEADS}, [], []
     for _ in range(n):
         s, pics = random.choice(groups)
-        sel = random.sample(pics, k)
-        imgs.append(np.stack(sel))
+        sel = random.choices(pics, k=k) if len(pics) < k else random.sample(pics, k)
+        imgs.append(np.stack([augment(p) if aug else p for p in sel]))
         c, r, m = targets(s)
         for h in HEADS: cls[h].append(c[h])
         reg.append(r); mask.append(m)
@@ -146,16 +185,24 @@ def batch_real(groups, n, k=3):
             torch.tensor(np.stack(reg)).to(dev), torch.tensor(np.stack(mask)).to(dev))
 
 
+def truth_vecs_of(cls, reg, dev):
+    """The batch's true recipes as vectors, from the training targets."""
+    one = lambda k, n: F.one_hot(cls[k], n).float()
+    return torch.cat([one("film", len(FILMS)), one("wb", len(WBS)), reg[:, :3], one("dr", len(DRS)), reg[:, 3:6], reg[:, 6:8],
+                      one("cc", len(EFF)), one("fxb", len(EFF)), reg[:, 8:9]], -1)
+
+
 def main():
     if sys.argv[1] != "train": sys.exit(__doc__)
-    groups = real_groups()
+    groups, hold, held = real_groups()
     random.seed(0); random.shuffle(groups)
-    hold = groups[: max(20, len(groups) // 20)]; groups = groups[len(hold):]
-    print(f"{len(groups)} recipes to train on, {len(hold)} held for a quick check", flush=True)
-    proxy_gen = None
+    print(f"{len(groups)} recipes to train on; held out: sessions {sorted(held)} ({sum(len(g[1]) for g in hold)} renders)", flush=True)
+    gen = None
     if arg("--proxy"):
         import synth
-        proxy_gen = synth.Generator(f"{DATA}/models/{arg('--proxy')}", dev)
+        gen = synth.Generator(f"{DATA}/models/{arg('--proxy')}", dev, exclude_sessions=held, augment="--no-aug" not in sys.argv)
+        for p in gen.model.parameters(): p.requires_grad_(False)
+    look_w = float(arg("--look", 0))
     model = Encoder().to(dev)
     opt = torch.optim.AdamW(model.parameters(), 1e-3, weight_decay=1e-4)
     minutes = float(arg("--minutes", 20)); t0 = time.time(); end = t0 + 60 * minutes; step = 0
@@ -164,21 +211,24 @@ def main():
         frac = (time.time() - t0) / (60 * minutes)
         for g in opt.param_groups: g["lr"] = 1e-3 * 0.5 * (1 + np.cos(np.pi * min(1, frac)))
         k = random.choice([2, 3])
-        if proxy_gen and step % 2 == 1:
-            imgs, cls, reg, mask = proxy_gen.batch(24, k)
+        if gen and step % 2 == 1:
+            imgs, cls, reg, mask = gen.batch(24, k)
         else:
             imgs, cls, reg, mask = batch_real(groups, 24, k)
-        loss = loss_fn(model(imgs), cls, reg, mask)
+        output = model(imgs)
+        loss = loss_fn(output, cls, reg, mask)
+        if gen and look_w > 0:
+            loss = loss + look_w * look_loss(gen, output[0], output[1], truth_vecs_of(cls, reg, dev))
         opt.zero_grad(); loss.backward(); opt.step(); step += 1
         if step % 500 == 0:
             model.eval()
             with torch.no_grad():
-                imgs, cls, reg, mask = batch_real(hold, 64, 3)
+                imgs, cls, reg, mask = batch_real(hold, 64, 3, aug=False)
                 logits, r = model(imgs)
                 film = (logits["film"].argmax(1) == cls["film"]).float().mean().item()
                 err = ((r - reg).abs() * mask).sum(0) / mask.sum(0).clamp_min(1)
             model.train()
-            print(f"step {step} loss {loss.item():.3f} | held film {film:.2f} wbR {9 * err[1]:.1f} wbB {9 * err[2]:.1f} "
+            print(f"step {step} loss {loss.item():.3f} | held sessions: film {film:.2f} wbR {9 * err[1]:.1f} wbB {9 * err[2]:.1f} "
                   f"H {2 * err[3]:.2f} S {2 * err[4]:.2f} col {4 * err[5]:.2f} ({(time.time() - t0) / 60:.0f} min)", flush=True)
             os.makedirs(os.path.dirname(out), exist_ok=True); torch.save(model.state_dict(), out)
     torch.save(model.state_dict(), out)

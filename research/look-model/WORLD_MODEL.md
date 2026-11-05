@@ -22,3 +22,18 @@
 ## Results
 
 (none yet)
+
+### First split (train: 7 sessions, two of them 84% of its scenes; archived in scores-split2.jsonl)
+
+val dE (lower is better) / match: neutral 8.20 / 0, library's most common 7.35 / 2, encoder (camera renders) 5.18 / 14,
+encoder + proxy-made looks 4.94 / 12, either + refinement through the proxy 6.5 / 3–7 (refinement hurts: don't use it
+until its objective is rethought; the encoder's embedding of the proxy's renders is no reliable distance).
+Film right: 83% on train scenes, 36% on val: the encoder memorises scenes. So: more sessions in train (split v3: 22),
+scene augmentation, whole sessions held out for its quick check. Proxy: dE 3.3 on val scenes, target ≤ 2; the error is
+large-scale tone and colour, not a global offset and not fine detail.
+
+## Ideas not tried yet
+
+- Look loss: the encoder's soft recipe through the proxy against the true recipe's render (`encoder.py --look w`).
+- A stronger proxy (wider, Lab / ΔE loss, per-scene tone stage). A pretrained image backbone for the encoder.
+- The owner's new photos: new sessions, especially DR400 ones.

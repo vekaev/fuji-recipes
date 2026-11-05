@@ -198,12 +198,19 @@ def cmd_train(n):
     split = json.load(open(f"{DATA}/library-split.json"))
     pool = [(a, s) for a, s in library() if a in set(split["train_pool"])]
     path = f"{DATA}/train-jobs.jsonl"
-    start = sum(1 for _ in open(path)) // 4 if os.path.exists(path) else 0
+    start = 1 + max((json.loads(l)["recipe_id"] for l in open(path)), default=-1) if os.path.exists(path) else 0
     with open(path, "a") as f:
         for k in range(start, start + n):
             rng = random.Random(1_000_000 + k)
             rec = perturb(rng, rng.choice(pool)[1]) if pool and rng.random() < 0.5 else random_recipe(rng)
-            for sc in rng.sample([s for s in scenes if s["dr"] >= dr(rec)], 4):
+            # Four scenes from different sessions where possible, so a recipe's look isn't tied to one outing.
+            ok = [s for s in scenes if s["dr"] >= dr(rec)]
+            sessions = list({s["session"] for s in ok}); rng.shuffle(sessions)
+            picks = [rng.choice([s for s in ok if s["session"] == k]) for k in sessions[:4]]
+            while len(picks) < 4:
+                c = rng.choice(ok)
+                if c not in picks: picks.append(c)
+            for sc in picks:
                 f.write(json.dumps({"raf": sc["raf"], "settings": rec, "recipe_id": k}) + "\n")
     print(f"recipes {start}..{start + n - 1} -> {path}")
 

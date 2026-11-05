@@ -57,8 +57,9 @@ class Proxy(nn.Module):
         return torch.sigmoid(self.out(h))
 
 
-def dataset(manifests, jobs_files):
+def dataset(manifests, jobs_files, only_train=True):
     meta = common.scene_meta()
+    allowed = None if only_train is False else {x["raf"] for x in json.load(open(f"{DATA}/scenes.json")) if x["role"] == "train"}
     items = []
     for jf, mf in zip(jobs_files, manifests):
         if not os.path.exists(mf): continue
@@ -67,6 +68,7 @@ def dataset(manifests, jobs_files):
             m = json.loads(l)
             if not m.get("jpeg"): continue
             j = jobs[m["line"]]
+            if allowed is not None and j["raf"] not in allowed: continue    # a scene since moved to val / test
             stem = os.path.splitext(os.path.basename(j["raf"]))[0]
             if not os.path.exists(f"{DATA}/raw/{stem}.tiff"): continue
             items.append((j["raf"], j["settings"], m["jpeg"]))
@@ -117,10 +119,10 @@ def main():
     out = f"{DATA}/models/{arg('--out', 'proxy.pt')}"
     if sys.argv[1] == "check":
         model = Proxy().to(dev); model.load_state_dict(torch.load(f"{DATA}/models/{arg('--model', 'proxy.pt')}", map_location=dev))
-        print("val dE %.2f p90 %.2f" % evaluate(model, dataset(*val_files())))
+        print("val dE %.2f p90 %.2f" % evaluate(model, dataset(*val_files(), only_train=False)))
         return
     t0 = time.time()
-    tr = dataset(*train_files()); va = dataset(*val_files())
+    tr = dataset(*train_files()); va = dataset(*val_files(), only_train=False)
     print(f"train {len(tr[2])} renders of {len(tr[0])} scenes, val {len(va[2])} renders of {len(va[0])} scenes "
           f"(loaded in {time.time() - t0:.0f} s)", flush=True)
     R, S, I, X, Y = tr
