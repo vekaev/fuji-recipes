@@ -11,6 +11,7 @@ struct StudioView: View {
     @Environment(\.regularLayout) private var regular
     @State private var picking = false
     @State private var dropTargeted = false
+    @Environment(\.displayScale) private var displayScale
     @State private var gridWidth: CGFloat = 900
     @FocusState private var gridFocused: Bool
 
@@ -164,6 +165,13 @@ struct StudioView: View {
     /// A vertical shot gets vertical cards (the camera's previews are 4:3 with bars; filling 2:3 or 3:2 hides them).
     private var ratio: CGFloat { model.studioRatio }
 
+    /// The pixels a card needs on this screen (long side, in steps so resizing the window doesn't reload every card).
+    private var cardPixels: Int {
+        let width = gridWidth / CGFloat(columns(gridWidth))
+        let long = Int((ratio < 1 ? width / ratio : width) * displayScale)
+        return max(800, (long + 399) / 400 * 400)
+    }
+
     private func grid(_ recipes: [Recipe]) -> some View {
         let items = studioItems(recipes)
         let n = columns(gridWidth)
@@ -201,7 +209,7 @@ struct StudioView: View {
         VStack(alignment: .leading, spacing: 7) {
             ZStack {
                 if let path = item.path {
-                    PhotoCell(path: path, ratio: ratio, maxPixel: 1400, radius: 10, over: item.better).onTapGesture(perform: open)
+                    PhotoCell(path: path, ratio: ratio, maxPixel: cardPixels, radius: 10, over: item.better).onTapGesture(perform: open)
                 } else {
                     Shimmer().aspectRatio(ratio, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .opacity(model.studioRendering ? 1 : 0.35)

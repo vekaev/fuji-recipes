@@ -220,6 +220,12 @@ actor ThumbCache {
     private var cache: [String: CGImage] = [:]
     private var order: [String] = []
     private var inflight: [String: Task<CGImage?, Never>] = [:]
+    private var bytes = 0
+    #if os(macOS)
+    private let byteLimit = 800 << 20
+    #else
+    private let byteLimit = 300 << 20
+    #endif
 
     func image(_ path: String, maxPixel: Int) async -> CGImage? {
         let key = "\(path)#\(maxPixel)"
@@ -230,8 +236,11 @@ actor ThumbCache {
         let image = await task.value
         inflight[key] = nil
         if let image {
-            cache[key] = image; order.append(key)
-            if order.count > 400 { cache[order.removeFirst()] = nil }   // ~400 thumbnails in memory at most
+            cache[key] = image; order.append(key); bytes += image.bytesPerRow * image.height
+            // At most ~400 thumbnails in memory, fewer when they're big (a big card or preview is 10–25 MB).
+            while order.count > 1, order.count > 400 || bytes > byteLimit {
+                if let old = cache.removeValue(forKey: order.removeFirst()) { bytes -= old.bytesPerRow * old.height }
+            }
         }
         return image
     }
