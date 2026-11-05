@@ -227,9 +227,13 @@ struct PreviewOverlay: View {
                             .buttonStyle(.plain).pointer().accessibilityLabel("Close").keyboardShortcut(.cancelAction)
                     }
                     // One photo at a time (no TabView: on the Mac it draws an empty tab bar). Swipe or ← → to move.
-                    ZStack {
-                        PhotoTile(path: base, maxPixel: 3000, fit: true).id(base)
-                        if let better { PhotoTile(path: better, maxPixel: 3000, fit: true, quiet: true).id(better) }   // over the blurry one, no flash
+                    // A Studio render fills the photo's own shape, which cuts off the 4:3 bars of the camera's previews.
+                    let tiles = ZStack {
+                        PhotoTile(path: base, maxPixel: 3000, fit: slug == nil).id(base)
+                        if let better { PhotoTile(path: better, maxPixel: 3000, fit: slug == nil, quiet: true).id(better) }   // over the blurry one, no flash
+                    }
+                    Group {
+                        if slug == nil { tiles } else { tiles.aspectRatio(model.studioRatio, contentMode: .fit).frame(maxWidth: .infinity, maxHeight: .infinity) }
                     }
                         .offset(x: drag)
                         .contentShape(Rectangle())

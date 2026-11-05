@@ -425,6 +425,12 @@ final class AppModel {
         }
     }
 
+    /// The shape of the Studio's photo: 2:3 for a vertical shot, 3:2 for a horizontal one.
+    var studioRatio: CGFloat {
+        guard let raw = studioRaw else { return 3 / 2 }
+        return (5...8).contains(RenderCache.orientation(raw)) ? 2 / 3 : 3 / 2
+    }
+
     func studioRender(_ r: Recipe) -> URL? {
         guard let raw = studioRaw else { return nil }
         return RenderCache(library: library).cached(raw: raw, settings: r.settings)

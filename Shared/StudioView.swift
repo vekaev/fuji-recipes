@@ -162,10 +162,7 @@ struct StudioView: View {
     }
 
     /// A vertical shot gets vertical cards (the camera's previews are 4:3 with bars; filling 2:3 or 3:2 hides them).
-    private var ratio: CGFloat {
-        guard let raw = model.studioRaw else { return 3 / 2 }
-        return (5...8).contains(RenderCache.orientation(raw)) ? 2 / 3 : 3 / 2
-    }
+    private var ratio: CGFloat { model.studioRatio }
 
     private func grid(_ recipes: [Recipe]) -> some View {
         let items = studioItems(recipes)
