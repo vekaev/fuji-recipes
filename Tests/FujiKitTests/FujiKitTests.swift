@@ -469,3 +469,66 @@ final class RenderOrientationTests: XCTestCase {
         XCTAssertEqual(RenderCache.tagged(d, orientation: 1), d, "upright RAW: unchanged")
     }
 }
+
+/// Camera → library: missing slot recipes are added as "mine" with the owner's photos; known ones aren't duplicated.
+final class SlotSyncTests: XCTestCase {
+    func testAddsMissingSlotsWithPhotos() throws {
+        let lib = Library(root: FileManager.default.temporaryDirectory.appendingPathComponent("fuji-sync-\(UUID().uuidString)"))
+        var chrome = RecipeSettings(); chrome.film = "Classic Chrome"; chrome.wbRed = 2; chrome.wbBlue = -4; chrome.color = 2
+        try lib.save(Recipe(slug: "summer", name: "Summer", settings: chrome))
+        var acros = RecipeSettings(); acros.film = "Acros+G"; acros.normalize()
+        var neg = RecipeSettings(); neg.film = "Classic Neg."; neg.wbRed = 0; neg.wbBlue = 0; neg.color = 3   // FS: WB shift not read
+        var negShot = neg; negShot.wbRed = -2; negShot.wbBlue = 3
+        let slots = [SlotSync.SlotContents(slot: "C1", name: "SUMMER", settings: chrome, dial: false),
+                     SlotSync.SlotContents(slot: "C2", name: "GREEN ACROS", settings: acros, dial: false),
+                     SlotSync.SlotContents(slot: "C3", name: "COPY", settings: acros, dial: false),
+                     SlotSync.SlotContents(slot: "C4", name: "", settings: .factory, dial: false),
+                     SlotSync.SlotContents(slot: "FS1", name: "", settings: neg, dial: true)]
+        let photos = [SlotSync.Photos(settings: acros, files: (1...8).map { "/p/A\($0).JPG" }, cameras: ["X-E5"], dates: ["2026-07-01", "2026-07-11"]),
+                      SlotSync.Photos(settings: negShot, files: ["/p/N1.JPG", "/p/N2.JPG"], cameras: ["X-E5"], dates: ["2026-08-01"])]
+
+        let dry = try SlotSync.run(slots, library: lib, camera: "X-E5", photos: photos, dryRun: true)
+        XCTAssertEqual(dry.added.count, 2)
+        XCTAssertEqual(try lib.recipes().count, 1, "a dry run writes nothing")
+
+        let r = try SlotSync.run(slots, library: lib, camera: "X-E5", photos: photos)
+        XCTAssertEqual(r.added.map(\.name), ["Green Acros", "Classic Neg. (FS1)"])
+        let green = try lib.recipe("green-acros")
+        XCTAssertEqual(green.status, "mine"); XCTAssertEqual(green.source?.kind, "camera")
+        XCTAssertEqual(green.shots, 8); XCTAssertEqual(green.samples?.count, 6); XCTAssertEqual(green.lastShot, "2026-07-11")
+        let fs = try lib.recipe(r.added[1].slug)
+        XCTAssertEqual([fs.settings.wbRed, fs.settings.wbBlue], [-2, 3], "FS position: WB shift taken from the photos")
+        XCTAssertNil(fs.uncertain)
+        XCTAssertEqual(try lib.recipes().count, 3, "C3 has the same settings as C2: one recipe; the empty C4 is skipped")
+        XCTAssertEqual(r.known.first { $0.slot == "C3" }?.slug, "green-acros")
+
+        let again = try SlotSync.run(slots, library: lib, camera: "X-E5", photos: photos)
+        XCTAssertTrue(again.added.isEmpty, again.summary)
+
+        // C5 named like a library recipe but set differently on the camera: both kept, the difference noted.
+        var summer2 = chrome; summer2.color = 0
+        let changed = try SlotSync.run([SlotSync.SlotContents(slot: "C5", name: "SUMMER", settings: summer2, dial: false)],
+                                       library: lib, camera: "X-E5", dryRun: true)
+        XCTAssertEqual(changed.added.first?.name, "Summer (on camera)")
+        XCTAssertTrue(changed.added.first?.notes?.contains("Differs from “Summer”: Color: +2 → 0") ?? false, changed.added.first?.notes ?? "")
+
+        SlotSync.undo(r.added, library: lib)
+        XCTAssertEqual(try lib.recipes().map(\.slug), ["summer"])
+    }
+
+    /// Added without photos (iPhone, or the card wasn't mounted), then a card shows up: the photos join, and an FS
+    /// position's WB shift comes from them.
+    func testPhotosFromACardLater() throws {
+        let lib = Library(root: FileManager.default.temporaryDirectory.appendingPathComponent("fuji-sync-\(UUID().uuidString)"))
+        var neg = RecipeSettings(); neg.film = "Classic Neg."; neg.color = 3
+        var negShot = neg; negShot.wbRed = -2; negShot.wbBlue = 3
+        let r = try SlotSync.run([SlotSync.SlotContents(slot: "FS1", name: "", settings: neg, dial: true)], library: lib, camera: "X-E5")
+        let slug = try XCTUnwrap(r.added.first?.slug)
+        XCTAssertEqual(try lib.recipe(slug).uncertain, ["wb_red", "wb_blue"])
+        let found = try SlotSync.fillPhotos(library: lib, photos: [SlotSync.Photos(settings: negShot, files: ["/card/N1.JPG"], cameras: ["X-E5"], dates: ["2026-08-01"])])
+        XCTAssertEqual(found[slug], 1)
+        let after = try lib.recipe(slug)
+        XCTAssertEqual([after.settings.wbRed, after.settings.wbBlue], [-2, 3]); XCTAssertNil(after.uncertain)
+        XCTAssertEqual(after.samples, ["/card/N1.JPG"])
+    }
+}

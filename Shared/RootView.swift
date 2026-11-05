@@ -136,6 +136,8 @@ private struct TopBar: View {
                 Button("Backups (\(model.backupCount))…") { model.sheet = .backups }
                 Divider()
                 Toggle("Ask Before Writing to the Camera", isOn: Binding(get: { model.askBeforeWriting }, set: { model.askBeforeWriting = $0 }))
+                Button("Add the Camera's Recipes to the Library") { model.syncSlotsToLibrary() }.disabled(!model.connected || model.syncingSlots)
+                Toggle("Add Them When the Camera Connects", isOn: Binding(get: { model.syncSlots }, set: { model.syncSlots = $0 }))
                 Divider()
                 Button("Try with a Simulated X-E5") { model.trySimulated() }.disabled(model.connected)
                 Button("Reload Library") { model.reload() }

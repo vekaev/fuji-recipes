@@ -79,6 +79,12 @@ func cli() -> Int32 {
         }
         switch r { case .success(let s): print(s); return 0; case .failure(let e): return fail(e) }
     case "slots": return runTool("fuji_slots", [:])
+    case "sync-slots":
+        // fuji sync-slots [--dry-run] [--no-photos] [folders…]: the camera's recipes the library doesn't have, with your photos.
+        var args: [String: Any] = ["dryRun": rest.contains("--dry-run"), "photos": !rest.contains("--no-photos")]
+        let folders = rest.filter { !$0.hasPrefix("--") }
+        if !folders.isEmpty { args["folders"] = folders }
+        return runTool("fuji_sync_slots", args)
     case "recipes": return runTool("fuji_recipes", rest.first.map { ["query": $0] } ?? [:])
     case "show":
         guard let q = rest.first else { print("usage: fuji show <recipe>"); return 2 }

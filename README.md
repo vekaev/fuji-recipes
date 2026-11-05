@@ -43,6 +43,9 @@ by how it looks, not by its numbers, so the photos come first and the settings s
   you last shot with it, looks to swap in, and its history, so you can put the old one back. Changes are staged and
   written right away: a backup first, a read-back after, Undo in the message. FS1–FS3 (the film simulation dial) are
   written too, through the camera's settings file; their WB shift and B&W toning stay as set on the camera for now.
+  When you plug the camera in, any recipe on it that your library doesn't have yet is added as yours, named after the
+  slot, with the photos you shot with it (on the Mac: your Fujifilm JPEGs and any memory card that's in; insert the
+  card later and the photos join then). Undo is in the message; the setting is in the ⋯ menu.
 - **Studio**: pick one of your RAW photos and see it developed by your camera with each recipe, side by side, the way
   FUJIFILM X RAW Studio does it (the camera does the work, so it's the real look). It starts by itself when the camera
   is connected, in big cards across the whole window; arrows move, Space opens one big (developed again at full size),
@@ -139,6 +142,7 @@ Any other MCP client: run `fuji mcp`.
 | `fuji_kits`, `fuji_backups`, `fuji_guide` | kits, saved snapshots, every field's values and the camera's rules |
 | `fuji_save_recipe`, `fuji_set_status`, `fuji_save_kit`, `fuji_save_slot` | library edits (checked against what the camera accepts; duplicates refused) |
 | `fuji_import_photos` | recipes from your Fujifilm JPEGs' EXIF (needs `brew install exiftool`) |
+| `fuji_sync_slots` | the camera's recipes your library doesn't have, added with the photos you shot with them |
 | `fuji_backup` | snapshot every slot into the library |
 | `fuji_plan_write` → `fuji_apply_write` | camera writes: a preview of every change first; apply only after you approve. Apply backs up all slots, writes only what differs in the camera's order, reads each slot back and reports anything refused |
 

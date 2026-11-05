@@ -92,6 +92,9 @@ final class Tools: @unchecked Sendable {
         ["name": "fuji_save_slot", "description": "Save what a camera slot holds as a library recipe (to keep a recipe someone set up by hand).",
          "inputSchema": ["type": "object", "properties": ["slot": ["type": "string", "description": "C1…C7"], "name": ["type": "string"], "status": ["type": "string", "enum": Values.status]], "required": ["slot"]],
          "annotations": ["readOnlyHint": false, "destructiveHint": false]],
+        ["name": "fuji_sync_slots", "description": "Camera → library: every recipe on the connected camera (C1–C7, and FS1–FS3 on an X-E5) that the library doesn't have is added as the user's own (status mine, named after the slot's name on the camera, source camera), with the user's photos shot with it (their Fujifilm JPEGs' EXIF via Spotlight or the given folders) as samples; recipes already in the library without photos get them. FS positions take their WB shift / toning from those photos (else marked uncertain). Never removes or renames. dryRun lists without writing. Photos need exiftool.",
+         "inputSchema": ["type": "object", "properties": ["folders": ["type": "array", "items": ["type": "string"], "description": "Where your photos are (default: every Fujifilm JPEG Spotlight knows)"], "photos": ["type": "boolean", "description": "Look for your photos (default true)"], "dryRun": ["type": "boolean"]]],
+         "annotations": ["readOnlyHint": false, "destructiveHint": false]],
         ["name": "fuji_import_photos", "description": "Find the recipes the user actually shot with from their Fujifilm JPEGs' EXIF (every Fuji JPEG stores its recipe), grouping identical settings. Recipes already in the library get shot counts and sample photos; new ones are added as status mine with a placeholder name. dryRun lists without writing. Needs exiftool.",
          "inputSchema": ["type": "object", "properties": ["folders": ["type": "array", "items": ["type": "string"]], "spotlight": ["type": "boolean", "description": "Every Fujifilm JPEG Spotlight knows (default when no folders)"], "min": ["type": "integer", "description": "Ignore recipes with fewer shots (default 3)"], "dryRun": ["type": "boolean"]]],
          "annotations": ["readOnlyHint": false, "destructiveHint": false]],
@@ -137,6 +140,7 @@ final class Tools: @unchecked Sendable {
         case "fuji_camera": return try await camera()
         case "fuji_doctor": return Doctor.json(await Doctor.run())
         case "fuji_slots": return try await slots()
+        case "fuji_sync_slots": return try await syncSlots(a)
         case "fuji_recipes": return try recipes(a)
         case "fuji_recipe": return try recipe(a)
         case "fuji_compare": return try await compare(a)
@@ -349,6 +353,22 @@ final class Tools: @unchecked Sendable {
             }
         }
         return out
+    }
+
+    func syncSlots(_ a: JSON) async throws -> Any {
+        let cam = try await Cameras.shared.require()
+        let info = try await cam.deviceInfo()
+        var contents = try await cam.readAll().map { SlotSync.SlotContents(slot: $0.slot, name: $0.name, settings: $0.settings, dial: false) }
+        if SettingsFile.layout(model: info.model) != nil, let file = try? await cam.downloadSettingsBackup(),
+           let dial = SettingsFile.dialSlots(file, model: info.model) {
+            contents += dial.map { SlotSync.SlotContents(slot: $0.slot, name: "", settings: $0.settings, dial: true) }
+        }
+        let photos = (a["photos"] as? Bool ?? true) ? SlotSync.photos(in: a["folders"] as? [String]) : nil
+        let r = try SlotSync.run(contents, library: library, camera: info.model, photos: photos, dryRun: a["dryRun"] as? Bool ?? false)
+        return ["summary": r.summary, "dryRun": a["dryRun"] as? Bool ?? false, "photosSearched": photos != nil,
+                "added": r.added.map { ["slug": $0.slug, "name": $0.name, "summary": $0.settings.summary, "shots": $0.shots ?? 0,
+                                        "uncertain": $0.uncertain ?? []] as JSON },
+                "photosAttached": r.photosFor, "slots": r.known.map { ["slot": $0.slot, "recipe": $0.slug] }]
     }
 
     func recipes(_ a: JSON) throws -> Any {

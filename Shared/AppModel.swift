@@ -61,6 +61,12 @@ final class AppModel {
     var askBeforeWriting = UserDefaults.standard.bool(forKey: "askBeforeWriting") {
         didSet { UserDefaults.standard.set(askBeforeWriting, forKey: "askBeforeWriting") }
     }
+    /// Camera → library when the camera connects (on by default): recipes on the camera that the library doesn't have are
+    /// added with the photos shot with them (`SlotSync`).
+    var syncSlots = UserDefaults.standard.object(forKey: "syncSlots") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(syncSlots, forKey: "syncSlots") }
+    }
+    var syncingSlots = false
     var toastAction: ToastAction?
     /// Runs when a sheet closes without its own button (Esc, a click outside, a swipe down): the recipe page saves.
     var sheetWillClose: (() -> Void)?
@@ -89,6 +95,7 @@ final class AppModel {
         guard CommandLine.arguments.contains("-uiTesting") else { return nil }
         Cameras.shared.simulate = true
         UserDefaults.standard.set(false, forKey: "askBeforeWriting")
+        UserDefaults.standard.set(false, forKey: "syncSlots")   // a test turns it on with -syncSlots YES
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("fuji-uitest-\(ProcessInfo.processInfo.processIdentifier)")
         try? FileManager.default.removeItem(at: root)
         let lib = Library(root: root)
@@ -197,10 +204,67 @@ final class AppModel {
             if !slots.contains(where: { $0.id == selectedSlot }) { selectedSlot = slots.first?.id ?? "C1" }
             if sheet == .connect { sheet = nil }
             say("\(i.model) · \(banks.count) slots and the dial read · backup saved")
+            if syncSlots { syncSlotsToLibrary(quiet: true) }
         } catch {
             say("Couldn't read the camera: \(error)")
         }
     }
+
+    /// Camera → library: slot recipes the library doesn't have are added as yours, named after the slot, with the photos
+    /// you shot with them as samples (Mac: your Fujifilm JPEGs' EXIF; iPhone / iPad: no photos, they come when the Mac
+    /// syncs). Recipes already here that have no photos get them. The toast offers Undo. `quiet`: on connect, no toast
+    /// when there's nothing new.
+    func syncSlotsToLibrary(quiet: Bool = false) {
+        guard let info, !slots.isEmpty, !syncingSlots else { return }
+        let contents = slots.map { SlotSync.SlotContents(slot: $0.id, name: $0.camName, settings: $0.cam, dial: $0.dial) }
+        let lib = library, model = info.model
+        // Only look through the photos when something needs them (a new recipe, or one without photos).
+        guard let plan = try? SlotSync.run(contents, library: lib, camera: model, dryRun: true) else { return }
+        let needsPhotos = !plan.added.isEmpty || plan.known.contains { k in (try? lib.recipe(k.slug))?.samples?.isEmpty ?? true }
+        guard needsPhotos else { if !quiet { say(plan.summary) }; return }
+        syncingSlots = true
+        Task.detached(priority: .utility) {
+            #if os(macOS)
+            let photos = SlotSync.photos()
+            #else
+            let photos: [SlotSync.Photos]? = nil
+            #endif
+            let result = Result { try SlotSync.run(contents, library: lib, camera: model, photos: photos) }
+            await MainActor.run {
+                self.syncingSlots = false
+                switch result {
+                case .success(let r):
+                    self.reload()
+                    guard !quiet || !r.added.isEmpty || !r.photosFor.isEmpty else { return }
+                    let added = r.added
+                    self.say(r.summary, action: added.isEmpty ? nil : ToastAction(title: "Undo") { [weak self] in
+                        guard let self else { return }
+                        SlotSync.undo(added, library: self.library); self.reload(); self.say("Removed what was added from the camera")
+                    })
+                case .failure(let e):
+                    if !quiet { self.say("Couldn't add the camera's recipes: \(e)") }
+                }
+            }
+        }
+    }
+
+    #if os(macOS)
+    /// A memory card mounted (or the camera switched to card reader mode): recipes that came from the camera without
+    /// photos get the ones on the card. Quiet when there's nothing to find.
+    func cardMounted(_ volume: URL) {
+        let folders = SlotSync.cardFolders([volume])
+        let lib = library
+        guard !folders.isEmpty, ((try? lib.recipes()) ?? []).contains(where: { $0.source?.kind == "camera" && ($0.samples ?? []).isEmpty }) else { return }
+        Task.detached(priority: .utility) {
+            guard let photos = SlotSync.photos(in: folders), let found = try? SlotSync.fillPhotos(library: lib, photos: photos), !found.isEmpty else { return }
+            await MainActor.run {
+                self.reload()
+                let names = found.keys.compactMap { s in self.recipes.first { $0.slug == s }?.name }.sorted()
+                self.say("Found \(found.values.reduce(0, +)) of your photos on the card for " + names.joined(separator: ", "))
+            }
+        }
+    }
+    #endif
 
     func refreshHistory() {
         guard let info else { return }
@@ -829,7 +893,3 @@ final class AppModel {
     }
 }
 
-extension RecipeSettings {
-    /// A slot nobody has set: Provia, everything at 0 / Off / Auto.
-    static var factory: RecipeSettings { var s = RecipeSettings(); s.normalize(); return s }
-}

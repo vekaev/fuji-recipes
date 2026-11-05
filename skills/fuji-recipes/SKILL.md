@@ -81,6 +81,7 @@ duplicates across the batch before filing.
 ## The camera
 
 Through the `fuji` MCP server (Claude Code and the Claude desktop app have it): `fuji_camera`, `fuji_slots`,
+`fuji_sync_slots` (recipes on the camera that the library lacks → added as "mine" with the owner's photos; dryRun first),
 `fuji_compare` (recipe vs "C3"), `fuji_backup`, kits (`fuji_save_kit`), and writes only as
 `fuji_plan_write` → show the preview → owner approves → `fuji_apply_write` (backs up every slot first, reads
 back after). Never claim a recipe is on the camera unless `fuji_apply_write` reported it ok. The camera must be in

@@ -17,6 +17,9 @@ struct FujiRecipesApp: App {
                 .preferredColorScheme(appearance.colorScheme)
                 .tint(Theme.ink)
                 .task { model.start(); StudioPaste.install(model) }
+                .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didMountNotification)) { n in
+                    if let v = n.userInfo?[NSWorkspace.volumeURLUserInfoKey] as? URL { model.cardMounted(v) }
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
@@ -32,6 +35,8 @@ struct FujiRecipesApp: App {
                 Button("Settings of This Slot") { model.openSlot(model.selectedSlot, editing: true) }.keyboardShortcut("e", modifiers: [])
                     .disabled(!model.connected || model.slot == nil)
                 Toggle("Ask Before Writing", isOn: $model.askBeforeWriting)
+                Button("Add the Camera's Recipes to the Library") { model.syncSlotsToLibrary() }.disabled(!model.connected || model.syncingSlots)
+                Toggle("Add Them When the Camera Connects", isOn: $model.syncSlots)
                 Button("Review Changes…") { model.sheet = .review }.keyboardShortcut(.return, modifiers: .command)
                     .disabled(model.changes.isEmpty || !model.askBeforeWriting)
                 Button("Undo All Changes") { model.revertAll() }.disabled(model.changes.isEmpty || !model.askBeforeWriting)

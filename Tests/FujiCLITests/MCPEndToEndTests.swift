@@ -66,9 +66,22 @@ final class MCPEndToEndTests: XCTestCase {
         let r = try call("tools/list", [:])
         let names = ((r["result"] as? [String: Any])?["tools"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
         for t in ["fuji_camera", "fuji_slots", "fuji_save_recipe", "fuji_edit_recipe", "fuji_plan_write", "fuji_apply_write",
-                  "fuji_render", "fuji_match_look", "fuji_inbox_add", "fuji_slot_history", "fuji_tag"] {
+                  "fuji_render", "fuji_match_look", "fuji_inbox_add", "fuji_slot_history", "fuji_tag", "fuji_sync_slots"] {
             XCTAssertTrue(names.contains(t), "missing \(t)")
         }
+    }
+
+    /// Camera → library: the simulated X-E5's slot recipes join the library (dry run first), once.
+    func testSyncSlotsIntoLibrary() throws {
+        let dry = try XCTUnwrap(try tool("fuji_sync_slots", ["dryRun": true, "photos": false]) as? [String: Any])
+        let planned = (dry["added"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
+        XCTAssertTrue(planned.contains("Green Acros"), "\(dry)")
+        let done = try XCTUnwrap(try tool("fuji_sync_slots", ["photos": false]) as? [String: Any])
+        XCTAssertEqual((done["added"] as? [[String: Any]])?.count, planned.count)
+        let list = "\(try tool("fuji_recipes"))"
+        XCTAssertTrue(list.contains("green-acros"), list)
+        let again = try XCTUnwrap(try tool("fuji_sync_slots", ["photos": false]) as? [String: Any])
+        XCTAssertEqual((again["added"] as? [[String: Any]])?.count, 0, "\(again)")
     }
 
     /// Save a recipe → plan C3 and FS2 → preview → apply → read back → history → edit → render twice (cached).

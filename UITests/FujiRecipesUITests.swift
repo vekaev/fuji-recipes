@@ -91,6 +91,21 @@ final class FujiRecipesUITests: XCTestCase {
         XCTAssertTrue(toast.label.contains("develops this RAW"), toast.label)
     }
 
+    /// Camera → library: on connect the simulated X-E5's slot recipes that the library doesn't have are added as
+    /// the owner's own ("Green Acros" from C1's name), with Undo in the toast.
+    func testCameraRecipesJoinLibrary() {
+        app.terminate()
+        app.launchArguments = ["-uiTesting", "-syncSlots", "YES"]
+        app.launch()
+        let toast = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'from your camera'")).firstMatch
+        XCTAssertTrue(toast.waitForExistence(timeout: 20))
+        XCTAssertTrue(toast.label.contains("Green Acros"), toast.label)
+        XCTAssertTrue(app.staticTexts["Green Acros"].waitForExistence(timeout: 5))
+        app.buttons["Undo"].tap()
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Removed what was added'")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Green Acros"].exists)
+    }
+
     /// Add recipes: pasted links are queued; the same link twice isn't.
     func testAddRecipeLinks() {
         tab(3)
