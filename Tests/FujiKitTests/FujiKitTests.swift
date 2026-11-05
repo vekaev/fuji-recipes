@@ -532,3 +532,103 @@ final class SlotSyncTests: XCTestCase {
         XCTAssertEqual(after.samples, ["/card/N1.JPG"])
     }
 }
+
+/// The 640-px render sharpened without the camera: detail from the RAF's JPEG, tones and color from the render.
+final class RenderDetailTests: XCTestCase {
+    /// A photo: a slow dark-to-light ramp with fine 1-in-8 lines (invisible at 640 px).
+    func picture(width w: Int, height h: Int, tint: (r: Double, g: Double, b: Double)? = nil, lines: Bool, bars: Int = 0) -> Data {
+        let c = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                          bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+        c.setFillColor(CGColor(gray: 0, alpha: 1)); c.fill(CGRect(x: 0, y: 0, width: w, height: h))
+        let t = tint ?? (1, 1, 1)
+        for x in 0..<w {
+            let v = 0.2 + 0.5 * Double(x) / Double(w)
+            c.setFillColor(CGColor(red: v * t.r, green: v * t.g, blue: v * t.b, alpha: 1))
+            c.fill(CGRect(x: x, y: bars, width: 1, height: h - 2 * bars))
+        }
+        if lines {
+            c.setFillColor(CGColor(gray: 0.95, alpha: 1))
+            for x in stride(from: 0, to: w, by: 8) { c.fill(CGRect(x: x, y: 0, width: 2, height: h)) }
+        }
+        let out = NSMutableData()
+        let dst = CGImageDestinationCreateWithData(out, "public.jpeg" as CFString, 1, nil)!
+        CGImageDestinationAddImage(dst, c.makeImage()!, [kCGImageDestinationLossyCompressionQuality: 1.0] as CFDictionary)
+        CGImageDestinationFinalize(dst)
+        return out as Data
+    }
+
+    func pixels(_ jpeg: Data) -> (px: [UInt8], w: Int, h: Int) {
+        let img = CGImageSourceCreateImageAtIndex(CGImageSourceCreateWithData(jpeg as CFData, nil)!, 0, nil)!
+        var px = [UInt8](repeating: 0, count: img.width * img.height * 4)
+        px.withUnsafeMutableBytes { raw in
+            CGContext(data: raw.baseAddress, width: img.width, height: img.height, bitsPerComponent: 8, bytesPerRow: img.width * 4,
+                      space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+                .draw(img, in: CGRect(x: 0, y: 0, width: img.width, height: img.height))
+        }
+        return (px, img.width, img.height)
+    }
+
+    /// Mean difference between neighbors on a row: how much fine detail there is.
+    func detail(_ p: (px: [UInt8], w: Int, h: Int), channel: Int = 1) -> Double {
+        let y = p.h / 2; var sum = 0.0
+        for x in 1..<p.w { sum += abs(Double(p.px[(y * p.w + x) * 4 + channel]) - Double(p.px[(y * p.w + x - 1) * 4 + channel])) }
+        return sum / Double(p.w)
+    }
+
+    func mean(_ p: (px: [UInt8], w: Int, h: Int), channel: Int) -> Double {
+        var sum = 0.0
+        for i in 0..<(p.w * p.h) { sum += Double(p.px[i * 4 + channel]) }
+        return sum / Double(p.w * p.h)
+    }
+
+    func testAddsDetailKeepsTonesAndColor() throws {
+        let preview = picture(width: 3000, height: 2000, lines: true)
+        let render = picture(width: 640, height: 427, tint: (1, 0.8, 0.5), lines: false)
+        let d = try XCTUnwrap(RenderDetail(preview: preview))
+        let out = pixels(try XCTUnwrap(d.apply(toRender: render)))
+        XCTAssertEqual(out.w, 3000); XCTAssertEqual(out.h, 2000)
+
+        let plain = pixels(render)
+        XCTAssertGreaterThan(detail(out), detail(plain) * 3, "fine lines came through")
+        // The render's brightness and tint survive overall.
+        XCTAssertEqual(mean(out, channel: 1) / mean(plain, channel: 1), 1, accuracy: 0.06)
+        XCTAssertEqual(mean(out, channel: 2) / mean(out, channel: 0), mean(plain, channel: 2) / mean(plain, channel: 0), accuracy: 0.02)
+    }
+
+    func testMonoStaysMono() throws {
+        let preview = picture(width: 3000, height: 2000, tint: (1, 0.6, 0.3), lines: true)     // the as-shot JPEG in color
+        let d = try XCTUnwrap(RenderDetail(preview: preview))
+        let out = pixels(try XCTUnwrap(d.apply(toRender: picture(width: 640, height: 427, lines: false))))
+        for i in stride(from: 0, to: out.w * out.h, by: 997) {
+            XCTAssertLessThanOrEqual(abs(Int(out.px[i * 4]) - Int(out.px[i * 4 + 2])), 3)
+        }
+    }
+
+    func testBarsOfCameraPreviewAreCut() throws {
+        let d = try XCTUnwrap(RenderDetail(preview: picture(width: 3000, height: 2000, lines: true)))
+        let out = pixels(try XCTUnwrap(d.apply(toRender: picture(width: 640, height: 480, lines: false, bars: 27))))
+        XCTAssertEqual(out.h, 2000)
+        for x in [100, 1500, 2900] {     // first and last rows are picture, not black bar
+            XCTAssertGreaterThan(out.px[x * 4 + 1], 30); XCTAssertGreaterThan(out.px[(1999 * 3000 + x) * 4 + 1], 30)
+        }
+    }
+
+    func testEmbeddedPreviewFromRAF() throws {
+        let jpeg = picture(width: 1200, height: 800, lines: true)
+        var raf = Data("FUJIFILMCCD-RAW 0201FF383501X-E5".utf8) + Data(count: 200)
+        let be = { (v: Int) in (0..<4).map { UInt8(truncatingIfNeeded: v >> (24 - 8 * $0)) } }
+        raf.replaceSubrange(84..<92, with: be(raf.count) + be(jpeg.count))
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("detail-\(UUID()).RAF")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try (raf + jpeg + Data(count: 500)).write(to: url)
+        XCTAssertEqual(RenderDetail.embeddedPreview(url), jpeg)
+
+        try Data("not a raw file, not at all, far too short for anything".utf8).write(to: url)
+        XCTAssertNil(RenderDetail.embeddedPreview(url))
+    }
+
+    /// A preview no bigger than the render has nothing to add.
+    func testSmallPreviewGivesNothing() {
+        XCTAssertNil(RenderDetail(preview: picture(width: 640, height: 427, lines: true)))
+    }
+}

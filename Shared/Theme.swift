@@ -152,6 +152,7 @@ struct PhotoTile: View {
     var fit = false
     var fitPortrait = false
     var placeholder = "not rendered yet"
+    var quiet = false       // no shimmer while it loads (it's over another picture)
     @State private var image: CGImage?
     @State private var missing = false
 
@@ -166,7 +167,7 @@ struct PhotoTile: View {
                     .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
                     .clipped()
             } else {
-                if path == nil || missing {
+                if path == nil || missing || quiet {
                     Color.clear   // no photo: the tile stays empty
                         .accessibilityHidden(true)
                 } else {

@@ -193,7 +193,10 @@ struct PreviewOverlay: View {
         if let p = model.preview {
             let _ = model.studioVersion   // a full-size render landed
             let slug = p.recipes?[p.index] ?? nil
-            let path = slug.flatMap { model.studioFull($0)?.path } ?? p.paths[p.index]
+            let base = p.paths[p.index]
+            let full = slug.flatMap { model.studioFull($0)?.path }
+            let sharp = full == nil ? slug.flatMap { model.studioSharp($0)?.path } : nil
+            let better = full ?? sharp
             let recipe = slug.flatMap { s in model.recipes.first { $0.slug == s } }
             ZStack {
                 Color.black.opacity(0.92).ignoresSafeArea().onTapGesture { model.preview = nil }
@@ -224,8 +227,10 @@ struct PreviewOverlay: View {
                             .buttonStyle(.plain).pointer().accessibilityLabel("Close").keyboardShortcut(.cancelAction)
                     }
                     // One photo at a time (no TabView: on the Mac it draws an empty tab bar). Swipe or ← → to move.
-                    PhotoTile(path: path, maxPixel: 2400, fit: true)
-                        .id(path)
+                    ZStack {
+                        PhotoTile(path: base, maxPixel: 3000, fit: true).id(base)
+                        if let better { PhotoTile(path: better, maxPixel: 3000, fit: true, quiet: true).id(better) }   // over the blurry one, no flash
+                    }
                         .offset(x: drag)
                         .contentShape(Rectangle())
                         .gesture(DragGesture(minimumDistance: 20)
@@ -238,8 +243,8 @@ struct PreviewOverlay: View {
                         .transition(.opacity)
                     HStack(spacing: 18) {
                         Button { step(-1) } label: { Image(systemName: "chevron.left").frame(width: 32, height: 32) }.disabled(p.index == 0)
-                        Text(slug != nil && path != p.paths[p.index] ? "Full size" : URL(fileURLWithPath: p.paths[p.index]).lastPathComponent)
-                            .font(.system(size: 12)).foregroundStyle(.white.opacity(0.6))
+                        Text(quality(slug: slug, full: full != nil, sharp: sharp != nil, name: URL(fileURLWithPath: base).lastPathComponent))
+                            .font(.system(size: 12)).foregroundStyle(.white.opacity(0.6)).accessibilityIdentifier("preview.quality")
                         Button { step(1) } label: { Image(systemName: "chevron.right").frame(width: 32, height: 32) }.disabled(p.index == p.paths.count - 1)
                     }
                     .buttonStyle(.plain).pointer().foregroundStyle(.white).font(.system(size: 17, weight: .medium))
@@ -262,9 +267,17 @@ struct PreviewOverlay: View {
                 if let r = recipe { model.toggleFavorite(r) }; return recipe == nil ? .ignored : .handled
             }
             // The Studio's photo shown big is developed again at full size (the grid has the camera's 640-px previews).
-            .task(id: slug) { model.loadStudioFull(slug) }
+            .task(id: "\(slug ?? "")|\(model.connected)") { model.loadStudioFull(slug) }   // the camera came back: full size now
             .onDisappear { model.loadStudioFull(nil) }
         }
+    }
+
+    /// Says what's on screen, so a soft picture is never a mystery.
+    private func quality(slug: String?, full: Bool, sharp: Bool, name: String) -> String {
+        guard slug != nil else { return name }
+        if full { return "Full size" }
+        let what = sharp ? "Detail from the RAW" : "Camera preview, 640 px"
+        return model.connected ? what : what + " · full size needs the camera"
     }
 
     private func step(_ d: Int) {

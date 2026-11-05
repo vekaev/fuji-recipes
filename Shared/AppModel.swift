@@ -93,7 +93,8 @@ final class AppModel {
     /// instant writes. Nothing touches the owner's library or camera.
     static func uiTestLibrary() -> Library? {
         guard CommandLine.arguments.contains("-uiTesting") else { return nil }
-        Cameras.shared.simulate = true
+        let noCamera = CommandLine.arguments.contains("-noCamera")    // a test of what works without the camera
+        Cameras.shared.simulate = !noCamera
         UserDefaults.standard.set(false, forKey: "askBeforeWriting")
         UserDefaults.standard.set(false, forKey: "syncSlots")   // a test turns it on with -syncSlots YES
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("fuji-uitest-\(ProcessInfo.processInfo.processIdentifier)")
@@ -112,7 +113,14 @@ final class AppModel {
         }
         let raw = root.appendingPathComponent("studio/DSCF0001.RAF")
         try? FileManager.default.createDirectory(at: raw.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? (Data("FUJIFILMCCD-RAW 0201FF383501X-E5".utf8) + Data(count: 4000)).write(to: raw)
+        var rafData = Data("FUJIFILMCCD-RAW 0201FF383501X-E5".utf8) + Data(count: 4000)
+        let bigPreview = Self.uiTestPreview()   // the JPEG inside a real RAF: its offset and length at bytes 84 and 88
+        rafData.replaceSubrange(84..<92, with: [UInt32(rafData.count), UInt32(bigPreview.count)].flatMap { v in (0..<4).map { UInt8(truncatingIfNeeded: v >> (24 - 8 * $0)) } })
+        try? (rafData + bigPreview).write(to: raw)
+        if noCamera, let r = (try? lib.recipes())?.first(where: { $0.status == "favorite" }) {
+            var p = ConversionProfile(Data(count: ConversionProfile.base + 4 * 29)); p[8] = 2
+            _ = try? RenderCache(library: lib).store(SimulatedCamera.renderJPEG(p, full: false), raw: raw, settings: r.settings)
+        }
         UserDefaults.standard.set(raw.path, forKey: "studioRaw")
         // Match a look: a reference photo developed (by the simulated camera) with a recipe the library doesn't have.
         let ref = root.appendingPathComponent("studio/looks/Leica street.jpg")
@@ -123,6 +131,17 @@ final class AppModel {
         UserDefaults.standard.set(ref.path, forKey: "lookReference")
         UserDefaults.standard.set("recipes", forKey: "studioMode")
         return lib
+    }
+
+    private static func uiTestPreview() -> Data {
+        let c = CGContext(data: nil, width: 1500, height: 1000, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                          bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+        c.setFillColor(CGColor(gray: 0.5, alpha: 1)); c.fill(CGRect(x: 0, y: 0, width: 1500, height: 1000))
+        c.setFillColor(CGColor(gray: 0.8, alpha: 1)); for x in stride(from: 0, to: 1500, by: 8) { c.fill(CGRect(x: x, y: 0, width: 3, height: 1000)) }
+        let out = NSMutableData()
+        guard let img = c.makeImage(), let d = CGImageDestinationCreateWithData(out, "public.jpeg" as CFString, 1, nil) else { return Data() }
+        CGImageDestinationAddImage(d, img, nil); CGImageDestinationFinalize(d)
+        return out as Data
     }
 
     // MARK: Start, detect, read
@@ -471,8 +490,9 @@ final class AppModel {
 
     func loadStudioFull(_ slug: String?) {
         studioFullWanted = slug
-        guard let slug, let raw = studioRaw, let r = recipes.first(where: { $0.slug == slug }),
-              studioFull(slug) == nil, connected, !writing, studioFullLoading == nil else { return }
+        guard let slug, let raw = studioRaw, let r = recipes.first(where: { $0.slug == slug }), studioFull(slug) == nil else { return }
+        makeStudioSharp(r, raw: raw)
+        guard connected, !writing, studioFullLoading == nil else { return }
         guard !studioRendering else { return }      // the grid's renders go first; picked up when they finish
         studioFullLoading = slug
         Task { [weak self] in
@@ -490,6 +510,39 @@ final class AppModel {
             } catch {
                 self.say("Couldn't develop \(r.name) at full size: \(error)")
             }
+        }
+    }
+
+    // Without the camera, and until its full-size render lands: the 640-px render with detail from the JPEG inside the
+    // RAF (`RenderDetail`, 0.2 s the first time for a RAW, 70 ms after). In Caches, not the library: it can be remade.
+
+    private var studioDetail: (raw: URL, detail: Task<RenderDetail?, Never>)?
+
+    func studioSharp(_ slug: String) -> URL? {
+        guard let raw = studioRaw, let r = recipes.first(where: { $0.slug == slug }) else { return nil }
+        let u = sharpURL(raw: raw, settings: r.settings)
+        return FileManager.default.fileExists(atPath: u.path) ? u : nil
+    }
+
+    private func sharpURL(raw: URL, settings: RecipeSettings) -> URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("FujiRecipes/sharp/\(RenderCache.rawKey(raw))/\(RenderCache.recipeKey(settings)).jpg")
+    }
+
+    private func makeStudioSharp(_ r: Recipe, raw: URL) {
+        let out = sharpURL(raw: raw, settings: r.settings)
+        guard let render = studioRender(r), !FileManager.default.fileExists(atPath: out.path) else { return }
+        if studioDetail?.raw != raw {
+            studioDetail = (raw, Task.detached(priority: .userInitiated) { RenderDetail.embeddedPreview(raw).flatMap { RenderDetail(preview: $0) } })
+        }
+        guard let detail = studioDetail?.detail else { return }
+        Task { [weak self] in
+            let made = await Task.detached(priority: .userInitiated) { () -> Bool in
+                guard let d = await detail.value, let jpeg = try? Data(contentsOf: render), let sharp = d.apply(toRender: jpeg) else { return false }
+                try? FileManager.default.createDirectory(at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
+                return (try? RenderCache.tagged(sharp, orientation: RenderCache.orientation(raw)).write(to: out, options: .atomic)) != nil
+            }.value
+            if made { self?.studioVersion += 1 }
         }
     }
 

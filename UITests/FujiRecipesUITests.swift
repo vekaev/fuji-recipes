@@ -63,6 +63,23 @@ final class FujiRecipesUITests: XCTestCase {
         XCTAssertTrue(app.buttons["preview.pick"].exists)
     }
 
+    /// No camera (the research renders hold it, or it isn't plugged in): the big preview still gets sharp, from the RAW's
+    /// own preview, and says full size needs the camera.
+    func testPreviewSharpWithoutCamera() {
+        app.terminate()
+        app.launchArguments = ["-uiTesting", "-noCamera"]
+        app.launch()
+        tab(2)
+        let tile = app.otherElements["studio.tile.UI Chrome"]
+        XCTAssertTrue(tile.waitForExistence(timeout: 15))
+        if tile.images.firstMatch.exists { tile.images.firstMatch.tap() } else { tile.tap() }
+        XCTAssertTrue(app.buttons["Close"].waitForExistence(timeout: 5))
+        let quality = app.staticTexts["preview.quality"]
+        XCTAssertTrue(quality.waitForExistence(timeout: 5))
+        let sharp = NSPredicate(format: "label == %@", "Detail from the RAW · full size needs the camera")
+        wait(for: [XCTNSPredicateExpectation(predicate: sharp, object: quality)], timeout: 10)
+    }
+
     /// Studio ▸ Paste: a copied photo becomes the look to match (and switches to Match a look); a copied RAF becomes
     /// the Studio's RAW.
     func testStudioPaste() {
