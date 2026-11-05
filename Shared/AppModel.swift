@@ -416,6 +416,54 @@ final class AppModel {
         do { try data.write(to: file, options: .atomic); lookReference = file } catch { lookError = "Couldn't keep that photo: \(error.localizedDescription)" }
     }
 
+    /// Uses a RAW for the Studio. iPhone / iPad: a picked or pasted file is only readable for a while, so it's copied
+    /// into the library's studio folder.
+    func useStudioRaw(_ url: URL) {
+        let ok = url.startAccessingSecurityScopedResource()
+        defer { if ok { url.stopAccessingSecurityScopedResource() } }
+        #if os(iOS)
+        let dir = library.root.appendingPathComponent("studio")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let copy = dir.appendingPathComponent(url.lastPathComponent)
+        if !FileManager.default.fileExists(atPath: copy.path) { try? FileManager.default.copyItem(at: url, to: copy) }
+        studioRaw = copy
+        #else
+        studioRaw = url
+        #endif
+    }
+
+    /// Paste in the Studio (⌘V on the Mac, the Paste button on iPhone / iPad): a copied .RAF becomes the Studio's RAW
+    /// (in both modes: Match a look checks on it); a copied photo file, or an image copied from a browser or Photos,
+    /// becomes the look to match. Returns false when the clipboard holds neither, so ⌘V falls through.
+    @discardableResult
+    func pasteIntoStudio(files: [URL], image: (data: Data, name: String)? = nil) -> Bool {
+        if let raw = files.first(where: { $0.pathExtension.uppercased() == "RAF" }) {
+            useStudioRaw(raw)
+            say("Pasted \(raw.lastPathComponent): the Studio develops this RAW now.")
+            return true
+        }
+        let imageExts: Set<String> = ["jpg", "jpeg", "heic", "heif", "png", "tif", "tiff", "webp", "dng"]
+        if let photo = files.first(where: { imageExts.contains($0.pathExtension.lowercased()) }) {
+            studioMode = .look
+            useLookReference(photo)
+            say("Pasted \(photo.lastPathComponent) as the look to match.")
+            return true
+        }
+        if let image {
+            studioMode = .look
+            useLookReference(data: image.data, name: image.name)
+            say("Pasted a photo as the look to match.")
+            return true
+        }
+        return false
+    }
+
+    /// A file name for an image pasted without one ("Pasted 2026-11-05 10-12-03.png").
+    static func pastedName(ext: String) -> String {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH-mm-ss"
+        return "Pasted \(f.string(from: Date())).\(ext)"
+    }
+
     /// Measures the reference and makes the first guess from the library's sample photos (measured once, then kept in
     /// looks.json), off the main thread.
     func analyseLook() {

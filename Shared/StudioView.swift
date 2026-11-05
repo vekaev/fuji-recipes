@@ -52,27 +52,12 @@ struct StudioView: View {
         .background(Theme.paper)
         .fileImporter(isPresented: $picking, allowedContentTypes: [UTType(filenameExtension: "RAF") ?? .rawImage, .rawImage]) { result in
             guard let url = try? result.get() else { return }
-            useRaw(url)
+            model.useStudioRaw(url)
         }
         .dropDestination(for: URL.self) { urls, _ in
             guard let u = urls.first(where: { $0.pathExtension.uppercased() == "RAF" }) else { return false }
-            useRaw(u); return true
+            model.useStudioRaw(u); return true
         } isTargeted: { dropTargeted = $0 }
-    }
-
-    /// iPhone / iPad: a picked file is only readable for a while, so it's copied into the library's Studio folder.
-    private func useRaw(_ url: URL) {
-        let ok = url.startAccessingSecurityScopedResource()
-        defer { if ok { url.stopAccessingSecurityScopedResource() } }
-        #if os(iOS)
-        let dir = model.library.root.appendingPathComponent("studio")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let copy = dir.appendingPathComponent(url.lastPathComponent)
-        if !FileManager.default.fileExists(atPath: copy.path) { try? FileManager.default.copyItem(at: url, to: copy) }
-        model.studioRaw = copy
-        #else
-        model.studioRaw = url
-        #endif
     }
 
     private var rawRow: some View {
@@ -82,15 +67,18 @@ struct StudioView: View {
                     .frame(width: regular ? 120 : 90)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(raw.lastPathComponent).font(.system(size: 15, weight: .semibold)).accessibilityIdentifier("studio.rawName")
-                    Text("As shot. Drop or choose another RAW from this camera.").font(.system(size: 12.5)).foregroundStyle(.secondary)
+                    Text(pasteHint("As shot. Drop, paste or choose another RAW from this camera.")).font(.system(size: 12.5)).foregroundStyle(.secondary)
                 }
             } else {
-                Text(regular ? "Drop a .RAF from your X-E5 here, or choose one." : "Choose a .RAF from your X-E5.")
+                Text(regular ? "Drop or paste a .RAF from your X-E5, or choose one." : "Choose or paste a .RAF from your X-E5.")
                     .font(.system(size: 15, weight: .semibold))
             }
             Spacer()
-            PillButton(title: model.studioRaw == nil ? "Choose a RAW…" : "Change…") { picking = true }
-                .accessibilityIdentifier("studio.choose")
+            VStack(alignment: .trailing, spacing: 6) {
+                PillButton(title: model.studioRaw == nil ? "Choose a RAW…" : "Change…") { picking = true }
+                    .accessibilityIdentifier("studio.choose")
+                StudioPasteButton()
+            }
         }
         .padding(14)
         .background(dropTargeted ? Theme.raised : Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -210,18 +198,7 @@ struct MatchLookView: View {
             if let url = try? result.get() { model.useLookReference(url) }
         }
         .fileImporter(isPresented: $pickingRaw, allowedContentTypes: [UTType(filenameExtension: "RAF") ?? .rawImage, .rawImage]) { result in
-            guard let url = try? result.get() else { return }
-            let ok = url.startAccessingSecurityScopedResource()
-            defer { if ok { url.stopAccessingSecurityScopedResource() } }
-            #if os(iOS)
-            let dir = model.library.root.appendingPathComponent("studio")
-            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let copy = dir.appendingPathComponent(url.lastPathComponent)
-            if !FileManager.default.fileExists(atPath: copy.path) { try? FileManager.default.copyItem(at: url, to: copy) }
-            model.studioRaw = copy
-            #else
-            model.studioRaw = url
-            #endif
+            if let url = try? result.get() { model.useStudioRaw(url) }
         }
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
@@ -234,7 +211,7 @@ struct MatchLookView: View {
         }
         .dropDestination(for: URL.self) { urls, _ in
             guard let u = urls.first else { return false }
-            if u.pathExtension.uppercased() == "RAF" { model.studioRaw = u } else { model.useLookReference(u) }
+            if u.pathExtension.uppercased() == "RAF" { model.useStudioRaw(u) } else { model.useLookReference(u) }
             return true
         } isTargeted: { dropTargeted = $0 }
     }
@@ -247,10 +224,10 @@ struct MatchLookView: View {
                     .onTapGesture { model.show([ref.path], at: 0, title: "Your photo") }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(ref.lastPathComponent).font(.system(size: 15, weight: .semibold)).lineLimit(1).accessibilityIdentifier("look.referenceName")
-                    Text("The look to match. Drop or choose another photo.").font(.system(size: 12.5)).foregroundStyle(.secondary)
+                    Text(pasteHint("The look to match. Drop, paste or choose another photo.")).font(.system(size: 12.5)).foregroundStyle(.secondary)
                 }
             } else {
-                Text(regular ? "Drop a photo whose look you want, or choose one." : "Choose a photo whose look you want.")
+                Text(regular ? "Drop or paste a photo whose look you want, or choose one." : "Choose or paste a photo whose look you want.")
                     .font(.system(size: 15, weight: .semibold))
             }
             Spacer()
@@ -261,6 +238,7 @@ struct MatchLookView: View {
                     Text("From Photos").font(.system(size: 12.5)).foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain).pointer()
+                StudioPasteButton()
             }
         }
         .padding(14)
@@ -389,4 +367,74 @@ struct MatchLookView: View {
                 .accessibilityIdentifier(id)
         }
     }
+}
+
+/// The Mac says "⌘V" in the hint; iPhone / iPad have the Paste button instead.
+private func pasteHint(_ text: String) -> String {
+    #if os(macOS)
+    return text.replacingOccurrences(of: "paste", with: "paste (⌘V)")
+    #else
+    return text
+    #endif
+}
+
+/// iPhone / iPad: the system Paste button reads what was copied (a RAF or a photo in Files, an image from Safari or
+/// Photos) without iOS asking for permission each time. On the Mac ⌘V does this (`StudioPaste` in App/MacSupport.swift).
+struct StudioPasteButton: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        #if os(iOS)
+        PasteButton(supportedContentTypes: [UTType(filenameExtension: "RAF") ?? .rawImage, .rawImage, .image]) { providers in
+            Task { await paste(providers) }
+        }
+        .labelStyle(.titleOnly)
+        .buttonBorderShape(.capsule)
+        .controlSize(.small)
+        .tint(Theme.ink)
+        .accessibilityIdentifier("studio.paste")
+        #else
+        EmptyView()
+        #endif
+    }
+
+    #if os(iOS)
+    /// A file (RAF or photo) comes as a temporary copy that disappears when the callback returns, so it's copied first;
+    /// an image without a file (copied from Safari or Photos) comes as data.
+    private func paste(_ providers: [NSItemProvider]) async {
+        let raf = UTType(filenameExtension: "RAF")
+        var files: [URL] = []
+        var image: (data: Data, name: String)?
+        for p in providers {
+            let type = p.registeredContentTypes.first { t in (raf.map { t.conforms(to: $0) } ?? false) || t.conforms(to: .rawImage) }
+                ?? p.registeredContentTypes.first { $0.conforms(to: .image) }
+            guard let type else { continue }
+            if let url = await Self.fileCopy(p, type) { files.append(url); continue }
+            if image == nil, let data = await withCheckedContinuation({ (done: CheckedContinuation<Data?, Never>) in
+                _ = p.loadDataRepresentation(for: type) { d, _ in done.resume(returning: d) }
+            }) {
+                image = (data, AppModel.pastedName(ext: type.preferredFilenameExtension ?? "jpg"))
+            }
+        }
+        await MainActor.run {
+            if !model.pasteIntoStudio(files: files, image: image) { model.say("Nothing to paste: copy a .RAF or a photo first.") }
+        }
+    }
+
+    private static func fileCopy(_ p: NSItemProvider, _ type: UTType) async -> URL? {
+        await withCheckedContinuation { (done: CheckedContinuation<URL?, Never>) in
+            _ = p.loadFileRepresentation(for: type, openInPlace: false) { url, _, _ in
+                guard let url else { done.resume(returning: nil); return }
+                let ext = url.pathExtension.isEmpty ? (type.preferredFilenameExtension ?? "dat") : url.pathExtension
+                // Files gives the original name; an image copied from Safari or Photos has none (its temp file is a hash).
+                let name = p.suggestedName.map { n in (n as NSString).pathExtension.isEmpty ? n + "." + ext : n }
+                    ?? AppModel.pastedName(ext: ext)
+                let dir = FileManager.default.temporaryDirectory.appendingPathComponent("paste-\(UUID().uuidString)")
+                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                let copy = dir.appendingPathComponent(name)
+                done.resume(returning: (try? FileManager.default.copyItem(at: url, to: copy)) != nil ? copy : nil)
+            }
+        }
+    }
+    #endif
 }

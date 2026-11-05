@@ -60,6 +60,34 @@ final class FujiRecipesUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Close"].waitForExistence(timeout: 5))
     }
 
+    /// Studio ▸ Paste: a copied photo becomes the look to match (and switches to Match a look); a copied RAF becomes
+    /// the Studio's RAW.
+    func testStudioPaste() {
+        tab(2)
+        XCTAssertTrue(app.staticTexts["studio.rawName"].waitForExistence(timeout: 10))
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 64, height: 40)).image { c in
+            UIColor(red: 0.8, green: 0.6, blue: 0.4, alpha: 1).setFill(); c.fill(CGRect(x: 0, y: 0, width: 64, height: 40))
+        }
+        UIPasteboard.general.image = image
+        let paste = app.buttons["studio.paste"]
+        XCTAssertTrue(paste.waitForExistence(timeout: 5))
+        paste.tap()
+        let ref = app.staticTexts["look.referenceName"]
+        XCTAssertTrue(ref.waitForExistence(timeout: 10))
+        XCTAssertTrue(ref.label.hasPrefix("Pasted "), ref.label)
+
+        // A RAF copied in Files: the camera's RAW type on the clipboard.
+        var raf = Data("FUJIFILMCCD-RAW 0201FF129502".utf8); raf.append(Data(count: 4096))
+        UIPasteboard.general.setData(raf, forPasteboardType: "com.fuji.raw-image")
+        app.buttons["studio.mode.recipes"].tap()
+        let paste2 = app.buttons["studio.paste"]
+        XCTAssertTrue(paste2.waitForExistence(timeout: 5))
+        paste2.tap()
+        let toast = app.staticTexts["toast"]
+        XCTAssertTrue(toast.waitForExistence(timeout: 10))
+        XCTAssertTrue(toast.label.contains("develops this RAW"), toast.label)
+    }
+
     /// Add recipes: pasted links are queued; the same link twice isn't.
     func testAddRecipeLinks() {
         tab(3)

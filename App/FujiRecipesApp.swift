@@ -16,7 +16,7 @@ struct FujiRecipesApp: App {
                 .frame(minWidth: 960, minHeight: 600)
                 .preferredColorScheme(appearance.colorScheme)
                 .tint(Theme.ink)
-                .task { model.start() }
+                .task { model.start(); StudioPaste.install(model) }
         }
         .windowStyle(.hiddenTitleBar)
         .commands {

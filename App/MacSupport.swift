@@ -81,3 +81,36 @@ enum TrafficLights {
         }
     }
 }
+
+/// ⌘V in the Studio: a .RAF copied in Finder becomes the Studio's RAW, a copied photo (a file, or an image copied from
+/// a browser or Photos) the look to match (`AppModel.pasteIntoStudio`). Only while the Studio tab is showing and no
+/// sheet is open; a text field being edited keeps its own Paste, and anything else on the clipboard falls through.
+/// The key code catches ⌘V on any keyboard layout (Cyrillic "м" included).
+@MainActor
+enum StudioPaste {
+    private static var monitor: Any?
+
+    static func install(_ model: AppModel) {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
+            let flags = e.modifierFlags.intersection([.command, .shift, .option, .control])
+            guard flags == .command, e.keyCode == 9 || e.charactersIgnoringModifiers?.lowercased() == "v",
+                  model.tab == .studio, model.sheet == nil, model.preview == nil,
+                  !(NSApp.keyWindow?.firstResponder is NSText) else { return e }
+            return paste(into: model) ? nil : e
+        }
+    }
+
+    static func paste(into model: AppModel) -> Bool {
+        let pb = NSPasteboard.general
+        let files = (pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+        var image: (data: Data, name: String)?
+        if files.isEmpty {
+            if let d = pb.data(forType: .png) { image = (d, AppModel.pastedName(ext: "png")) }
+            else if let d = pb.data(forType: .tiff), let png = NSBitmapImageRep(data: d)?.representation(using: .png, properties: [:]) {
+                image = (png, AppModel.pastedName(ext: "png"))
+            }
+        }
+        return model.pasteIntoStudio(files: files, image: image)
+    }
+}
