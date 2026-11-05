@@ -107,6 +107,62 @@ func cli() -> Int32 {
         var args: [String: Any] = ["raw": raw, "full": rest.contains("--full")]
         if !names.isEmpty { args["recipes"] = Array(names) }
         return runTool("fuji_render", args)
+    case "render-batch":
+        // Developer aid (research/look-model): fuji render-batch <jobs.jsonl> --cache <dir> [--manifest <out.jsonl>].
+        // Each line {"raf": path, "settings": {recipe}}; jobs for one RAF run together (one upload). Renders already in
+        // the cache are skipped, so a stopped run picks up where it was. The manifest has one line per job, in order:
+        // {"line", "raf", "jpeg" (null if it failed), "notes" (settings the camera couldn't apply)}.
+        guard let jobsPath = rest.first(where: { !$0.hasPrefix("--") }),
+              let ci = rest.firstIndex(of: "--cache"), ci + 1 < rest.count else { print("Usage: fuji render-batch <jobs.jsonl> --cache <dir> [--manifest out.jsonl]"); return 2 }
+        let cache = RenderCache(root: URL(fileURLWithPath: (rest[ci + 1] as NSString).expandingTildeInPath))
+        let manifest = rest.firstIndex(of: "--manifest").flatMap { $0 + 1 < rest.count ? (rest[$0 + 1] as NSString).expandingTildeInPath : nil }
+        let r = blocking { () async throws -> String in
+            func log(_ s: String) { FileHandle.standardError.write(Data((s + "\n").utf8)) }
+            let lines = try String(contentsOfFile: (jobsPath as NSString).expandingTildeInPath, encoding: .utf8).split(separator: "\n")
+            var byRaf: [(String, [(Int, RecipeSettings)])] = []
+            for (n, l) in lines.enumerated() where !l.isEmpty {
+                guard let o = try JSONSerialization.jsonObject(with: Data(l.utf8)) as? [String: Any], let raf = o["raf"] as? String,
+                      let sj = o["settings"] else { continue }
+                let s = try JSONDecoder().decode(RecipeSettings.self, from: JSONSerialization.data(withJSONObject: sj))
+                if let i = byRaf.firstIndex(where: { $0.0 == raf }) { byRaf[i].1.append((n, s)) } else { byRaf.append((raf, [(n, s)])) }
+            }
+            var rendered = 0, cached = 0, failed = 0
+            let total = byRaf.map(\.1.count).reduce(0, +)
+            var results: [Int: [String: Any]] = [:]
+            var cam: FujiCamera?
+            let t0 = Date()
+            for (raf, jobs) in byRaf {
+                let url = URL(fileURLWithPath: raf)
+                var base: ConversionProfile?
+                for (n, s) in jobs {
+                    if let hit = cache.cached(raw: url, settings: s) {
+                        cached += 1; results[n] = ["line": n, "raf": raf, "jpeg": hit.path, "notes": [String]()]; continue
+                    }
+                    if cam == nil { cam = try await Cameras.shared.require() }
+                    do {
+                        if base == nil { base = try await cam!.uploadRAF(try Data(contentsOf: url)) }
+                        let made = try await cam!.render(s, base: base!)
+                        let u = try cache.store(made.jpeg, raw: url, settings: s); rendered += 1
+                        results[n] = ["line": n, "raf": raf, "jpeg": u.path, "notes": made.notes]
+                    } catch let e as CameraError where e.description.contains("Switch it off") {
+                        throw e      // a stuck camera: stop, it needs a power cycle
+                    } catch {
+                        failed += 1; log("failed \(url.lastPathComponent) \(s.summary): \(error)")
+                        results[n] = ["line": n, "raf": raf, "jpeg": NSNull(), "notes": ["\(error)"]]
+                    }
+                    if rendered > 0, rendered % 50 == 0 {
+                        let rate = Double(rendered) / Date().timeIntervalSince(t0)
+                        log("\(rendered + cached) of \(total), \(Int(rate * 3600)) renders/hour")
+                    }
+                }
+            }
+            if let manifest {
+                let text = results.keys.sorted().compactMap { k in (try? JSONSerialization.data(withJSONObject: results[k]!)).map { String(decoding: $0, as: UTF8.self) } }
+                try (text.joined(separator: "\n") + "\n").write(toFile: manifest, atomically: true, encoding: .utf8)
+            }
+            return "rendered \(rendered) cached \(cached) failed \(failed)"
+        }
+        switch r { case .success(let s): print(s); return 0; case .failure(let e): return fail(e) }
     case "exif-set":
         // Developer aid: Fuji JPEGs in a folder → a labelled set (JSON lines {name, url, settings, samples}) for
         // fuji match --learn, up to N photos per recipe, evenly spread. fuji exif-set <folder> [N]
