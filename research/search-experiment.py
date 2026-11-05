@@ -19,7 +19,9 @@ def status(s):
     print(s, flush=True)
 
 def app_open():
-    return subprocess.run(["pgrep", "-f", "Applications/Fuji Recipes.app/Contents/MacOS"], capture_output=True).returncode == 0
+    # The executable's own path (ps comm), so a shell whose command line mentions the app doesn't count.
+    names = subprocess.run(["ps", "-axo", "comm="], capture_output=True, text=True).stdout.splitlines()
+    return any(n.strip().endswith("/Fuji Recipes.app/Contents/MacOS/Fuji Recipes") for n in names)
 
 def run(desc, args):
     b = subprocess.run(["swift", "build"], capture_output=True, text=True, cwd=ROOT)

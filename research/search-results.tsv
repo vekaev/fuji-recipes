@@ -1,0 +1,14 @@
+commit	score	verdict	detail	minutes	description
+-	90.9	baseline	score 90.9 recovered 7 film 5 match 91 floor 92 renders 642	20	baseline (search as reverted in 9c8f65b, 16 photos, budget 60)
+56048ba	100.9	kept	score 100.9 recovered 8 film 5 match 93 floor 92 renders 254	11	the best two films also tried with everything neutral (WB, tone, Color 0) before the corrective step
+-	90.9	discarded	score 90.9 recovered 7 film 5 match 93 floor 92 renders 55	6	four films reach the final round, two LM steps each (was three films, three steps)
+-	84.9	discarded	score 84.9 recovered 6 film 6 match 94 floor 92 renders 271	12	fresh sensitivities (Jacobian) for each final film instead of reusing the best film's
+6a59062	114.9	kept	score 114.9 recovered 9 film 6 match 93 floor 92 renders 109	8	polish the best two finals (half the remaining budget each) instead of one
+-	114.9	discarded	score 114.9 recovered 9 film 6 match 93 floor 92 renders 17	6	polish only accepts moves that help by 0.3 (was 0.05): less chasing of measurement noise
+-	114.9	discarded	score 114.9 recovered 9 film 6 match 94 floor 92 renders 36	7	budget 90 instead of 60 (same search, more renders)
+-	114.9	discarded	score 114.9 recovered 9 film 6 match 93 floor 92 renders 26	6	polish also moves dynamic range (DR100 / DR200 / DR400), which trades off against highlights
+-	100.9	discarded	score 100.9 recovered 8 film 5 match 93 floor 92 renders 154	10	the neutral variants also use DR100
+-	114.9	discarded	score 114.9 recovered 9 film 6 match 93 floor 92 renders 103	9	neutral variants for the best three films (was two)
+-	114.9	discarded	score 114.9 recovered 9 film 6 match 94 floor 92 renders 297	10	the neutral variants also reset clarity and sharpness to 0
+c0fbffd	118.9	kept	score 118.9 recovered 9 film 7 match 93 floor 92 renders 46	7	the first guess's film always reaches the final round (retest of 72fed97 on this benchmark)
+-	118.9	discarded	score 118.9 recovered 9 film 7 match 93 floor 92 renders 107	9	polish the best three finals (a third of the remaining budget each)
