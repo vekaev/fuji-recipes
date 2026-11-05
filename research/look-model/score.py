@@ -7,6 +7,7 @@
   uv run research/look-model/score.py val --predict "<command>" [--label name]
   uv run research/look-model/score.py val --predictions preds.json [--label name]      (val only)
   uv run research/look-model/score.py test --predict "<command>" --label name          (milestones only)
+  uv run research/look-model/score.py val --packages                                   (just build the case folders)
 
 Each case runs `<command> <case folder>` in its own process. The folder holds only what a user would give: refs/*.jpg
 (the hidden recipe developed on 3 scenes the method never gets the RAWs of; re-encoded, random names, no EXIF) and
@@ -14,8 +15,9 @@ inputs.json (2 of the owner's RAFs). The command prints the recipe as JSON on it
 
 Judging: the found recipe and the hidden one are developed on 3 more of the owner's scenes. Grain, sharpness and
 noise reduction are copied from the hidden recipe first (texture, not the look), the renders are shrunk 4x, and
-CIEDE2000 is averaged per scene. A case matches when its worst scene is <= 3.
-Prints: "dE 2.84 match 0.61 (49/80) worst 3.10 film 0.55 | colour dE … | mono dE … | label" (lower dE is better).
+CIEDE2000 is averaged per scene (and its 90th percentile, which catches local changes such as Color or
+Color Chrome). A case matches when its worst scene's mean is <= 3.
+Prints: "dE 2.84 match 0.61 (49/80) p90 5.2 worst 3.10 film 0.55 | colour dE … | mono dE … | label" (lower dE is better).
 val: every case goes to look-model/scores.jsonl. test: only the summary, to look-holdout/scores.jsonl.
 """
 import json, os, random, shutil, subprocess, sys, tempfile, time, hashlib
@@ -37,14 +39,18 @@ def arg(name, default=None):
 
 def lab(path):
     im = Image.open(path).convert("RGB")
+    if im.size == (640, 480):   # the camera's preview: a 3:2 photo letterboxed into 4:3 (black bars of ~27 rows)
+        im = im.crop((0, 28, 640, 452))
     im = im.resize((max(1, im.width // 4), max(1, im.height // 4)), Image.BOX)
     return rgb2lab(np.asarray(im, dtype=np.float64) / 255.0)
 
 
 def delta(a, b):
+    """(mean, 90th percentile) CIEDE2000 between two renders of the same scene."""
     A, B = lab(a), lab(b)
     h, w = min(A.shape[0], B.shape[0]), min(A.shape[1], B.shape[1])
-    return float(deltaE_ciede2000(A[:h, :w], B[:h, :w]).mean())
+    d = deltaE_ciede2000(A[:h, :w], B[:h, :w])
+    return float(d.mean()), float(np.percentile(d, 90))
 
 
 def render(jobs, cache):
@@ -93,6 +99,9 @@ def main():
     cases = json.load(open(f"{base}/cases-{split}.json"))
     cache = f"{base}/eval-renders"
     label = arg("--label", "unnamed")
+    if "--packages" in sys.argv:   # only build the case folders (from cached renders), e.g. to try a predictor by hand
+        for c in cases: package(c, base, cache)
+        print(f"{len(cases)} case folders in {base}/packages"); return
     if arg("--predictions"):
         if split == "test": sys.exit("test takes --predict only (each case in its own process)")
         preds = json.load(open(arg("--predictions")))
@@ -112,19 +121,20 @@ def main():
     it = iter(paths); rows = []
     for c in cases:
         failed = preds[c["id"]].get("film") == "__none__"
-        ds = []
+        ds, p90 = [], []
         for _ in c["evals"]:
-            if failed: ds.append(99.0); continue
+            if failed: ds.append(99.0); p90.append(99.0); continue
             t, f = next(it), next(it)
-            ds.append(delta(t, f) if t and f else 99.0)
+            m, p = delta(t, f) if t and f else (99.0, 99.0)
+            ds.append(m); p90.append(p)
         mono = c["recipe"].get("color") is None
         rows.append({"id": c["id"], "source": c["source"].split(":")[0], "mono": mono, "dE": round(float(np.mean(ds)), 2),
-                     "worst": round(max(ds), 2), "match": max(ds) <= MATCH, "film": preds[c["id"]].get("film") == c["recipe"]["film"]})
+                     "worst": round(max(ds), 2), "p90": round(float(np.mean(p90)), 2), "match": max(ds) <= MATCH, "film": preds[c["id"]].get("film") == c["recipe"]["film"]})
 
     def summary(rs):
         if not rs: return "-"
         return f"dE {np.mean([r['dE'] for r in rs]):.2f} match {np.mean([r['match'] for r in rs]):.2f} ({sum(r['match'] for r in rs)}/{len(rs)})"
-    line = (f"{summary(rows)} worst {np.mean([r['worst'] for r in rows]):.2f} film {np.mean([r['film'] for r in rows]):.2f}"
+    line = (f"{summary(rows)} p90 {np.mean([r['p90'] for r in rows]):.2f} worst {np.mean([r['worst'] for r in rows]):.2f} film {np.mean([r['film'] for r in rows]):.2f}"
             f" | colour {summary([r for r in rows if not r['mono']])} | mono {summary([r for r in rows if r['mono']])}"
             f" | real {summary([r for r in rows if r['source'] != 'random'])} | random {summary([r for r in rows if r['source'] == 'random'])}"
             f" | {label}")
