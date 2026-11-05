@@ -446,7 +446,9 @@ public enum LookMatch {
         for c in corrected.prefix(3) where done < budget { finals.append(try await levenberg(from: c, steps: 3)) }
         // 3. Polish the best one setting at a time, with what's left of the budget. (Measured on 20 random recipes:
         //    polishing three films with a third each, or Broyden updates, did worse.)
-        if let top = finals.min(by: { $0.distance < $1.distance }) { _ = try await descend(from: top, until: budget) }
+        let ranked = finals.sorted { $0.distance < $1.distance }
+        if ranked.count > 1 { _ = try await descend(from: ranked[1], until: done + (budget - done) / 2) }
+        if let top = ranked.first { _ = try await descend(from: top, until: budget) }
         // Three distinct results, best first; a result that only differs by a half step from a better one is skipped.
         var out: [Candidate] = []
         for c in tried.values.sorted(by: { $0.distance < $1.distance }) {
