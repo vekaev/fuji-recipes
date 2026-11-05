@@ -24,5 +24,5 @@ c0369b0	32.4	-49.5	kept	k=6 neighbours
 028d53e	33.6	-28.4	kept	double the weight of the casts (features repeated)
 -	31.6	-28.5	discarded	double the weight of saturation (chroma repeated)
 -	31.0	-28.3	discarded	double the weight of the tone shape
-72fed97	-	-	search	camera search: the first guess's film always reaches the final round (sim benchmark 101.6 → 105.5; real: fixes DSCF0073)
--	-	-	search	camera search: best two films also tried with everything neutral (sim 105.5 → 105.5; real: for plain recipes like DSCF4338)
+72fed97	-	-	reverted	camera search: the first guess's film always reaches the final round (sim 101.6 → 105.5; real run 2: DSCF0073 still missed, 2/12 recovered vs 6/12)
+-	-	-	not applied	camera search: best two films also tried neutral (the edit never landed; run 2 didn't include it)

@@ -54,9 +54,13 @@ reference, the camera develops the RAF (about 2 s a render, 1–2 minutes a phot
   measure works on real photos.
 - Misses: three black-and-white near-ties (Acros vs Acros+G vs Monochrome, 96–99%: the filters barely differ at 640 px),
   a nearly colourless scene, a pair whose own recipe renders only 55% (the JPEG isn't the RAF's plain development:
-  a crop or an in-camera edit), and two real search failures: a Classic Neg. found first and then dropped (fixed: the
-  first guess's film always reaches the final round) and a plain Astia started from the library's warm average and
-  never reached neutral (fixed: the best films are also tried with everything neutral).
+  a crop or an in-camera edit), and two real search failures: a Classic Neg. found first and then dropped, and a plain Astia started from the
+  library's warm average that never reached neutral.
+- A targeted fix (the first guess's film always reaches the final round) helped the simulated benchmark (101.6 →
+  105.5) but not that photo, and the second real run (with it and newer first guesses) recovered only 2 of 12: the
+  search is unstable on the real camera; small changes in the start lead elsewhere (DSCF4027 went from its exact
+  recipe at 97% to Pro Neg. Hi at 94%). Reverted. Next: robustness measured on real pairs (more budget, several
+  starts polished), not special cases. The simulated benchmark doesn't predict the real one.
 
 ## Research loop (first guess)
 
