@@ -632,3 +632,17 @@ final class RenderDetailTests: XCTestCase {
         XCTAssertNil(RenderDetail(preview: picture(width: 640, height: 427, lines: true)))
     }
 }
+
+final class RawKeyTests: XCTestCase {
+    /// The key is read once per file version, so an edited file of the same size still gets a new one.
+    func testKeyFollowsTheFile() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("key-\(UUID()).RAF")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data(repeating: 1, count: 4000).write(to: url)
+        let first = RenderCache.rawKey(url)
+        XCTAssertEqual(RenderCache.rawKey(url), first)
+        try Data(repeating: 2, count: 4000).write(to: url)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: 60)], ofItemAtPath: url.path)
+        XCTAssertNotEqual(RenderCache.rawKey(url), first)
+    }
+}

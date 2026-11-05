@@ -334,11 +334,13 @@ struct PhotoCell: View {
     var radius: CGFloat = 8
     var fitPortrait = false
     var placeholder = "not rendered yet"
+    var over: String? = nil     // a better picture of the same photo: fades in over this one when it's there
     var body: some View {
         Color.clear
             .aspectRatio(ratio, contentMode: .fit)
             .frame(maxWidth: .infinity)
             .overlay { PhotoTile(path: path, maxPixel: maxPixel, fitPortrait: fitPortrait, placeholder: placeholder) }
+            .overlay { if let over { PhotoTile(path: over, maxPixel: maxPixel, fitPortrait: fitPortrait, quiet: true).id(over) } }
             .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
             .contentShape(Rectangle())
             .pointer()

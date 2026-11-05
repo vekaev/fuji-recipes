@@ -57,8 +57,7 @@ final class FujiRecipesUITests: XCTestCase {
         XCTAssertTrue(pick.waitForExistence(timeout: 5))
         pick.tap()
         XCTAssertTrue(app.buttons["Picked 1"].waitForExistence(timeout: 5))
-        let tile = app.otherElements["studio.tile.UI Chrome"].images.firstMatch
-        if tile.exists { tile.tap() } else { app.otherElements["studio.tile.UI Chrome"].tap() }
+        app.descendants(matching: .any)["studio.photo.UI Chrome"].tap()
         XCTAssertTrue(app.buttons["Close"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["preview.pick"].exists)
     }
@@ -70,9 +69,10 @@ final class FujiRecipesUITests: XCTestCase {
         app.launchArguments = ["-uiTesting", "-noCamera"]
         app.launch()
         tab(2)
-        let tile = app.otherElements["studio.tile.UI Chrome"]
-        XCTAssertTrue(tile.waitForExistence(timeout: 15))
-        if tile.images.firstMatch.exists { tile.images.firstMatch.tap() } else { tile.tap() }
+        let card = app.descendants(matching: .any)["studio.photo.UI Chrome"]
+        XCTAssertTrue(card.waitForExistence(timeout: 15))
+        wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "sharp"), object: card)], timeout: 15)   // the card itself is sharp
+        card.tap()
         XCTAssertTrue(app.buttons["Close"].waitForExistence(timeout: 5))
         let quality = app.staticTexts["preview.quality"]
         XCTAssertTrue(quality.waitForExistence(timeout: 5))

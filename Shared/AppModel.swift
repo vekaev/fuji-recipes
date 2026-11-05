@@ -397,7 +397,7 @@ final class AppModel {
 
     var studioRaw: URL? {
         didSet {
-            studioBase = nil; studioNotes = [:]; studioStopped = false; studioSelected = 0
+            studioBase = nil; studioNotes = [:]; studioStopped = false; studioSelected = 0; sharpWanted = []
             UserDefaults.standard.set(studioRaw?.path, forKey: "studioRaw")
             loadStudioPicks()
         }
@@ -497,7 +497,7 @@ final class AppModel {
     func loadStudioFull(_ slug: String?) {
         studioFullWanted = slug
         guard let slug, let raw = studioRaw, let r = recipes.first(where: { $0.slug == slug }), studioFull(slug) == nil else { return }
-        makeStudioSharp(r, raw: raw)
+        wantSharp(r)
         guard connected, !writing, studioFullLoading == nil else { return }
         guard !studioRendering else { return }      // the grid's renders go first; picked up when they finish
         studioFullLoading = slug
@@ -519,10 +519,13 @@ final class AppModel {
         }
     }
 
-    // Without the camera, and until its full-size render lands: the 640-px render with detail from the JPEG inside the
-    // RAF (`RenderDetail`, 0.2 s the first time for a RAW, 70 ms after). In Caches, not the library: it can be remade.
+    // The cards, and the big preview until the camera's full-size render lands: the 640-px render with detail from the
+    // JPEG inside the RAF (`RenderDetail`, 0.2 s the first time for a RAW, 70 ms after). In Caches, not the library: it
+    // can be remade.
 
     private var studioDetail: (raw: URL, detail: Task<RenderDetail?, Never>)?
+    private var sharpWanted: [Recipe] = []
+    private var sharpWorking = false
 
     func studioSharp(_ slug: String) -> URL? {
         guard let raw = studioRaw, let r = recipes.first(where: { $0.slug == slug }) else { return nil }
@@ -530,25 +533,58 @@ final class AppModel {
         return FileManager.default.fileExists(atPath: u.path) ? u : nil
     }
 
+    /// The best picture of a recipe for a card: the camera's full size if it has been made, else the sharp one.
+    func studioBetter(_ r: Recipe) -> String? {
+        guard let raw = studioRaw else { return nil }
+        if let full = RenderCache(library: library).cached(raw: raw, settings: r.settings, full: true) { return full.path }
+        let u = sharpURL(raw: raw, settings: r.settings)
+        return FileManager.default.fileExists(atPath: u.path) ? u.path : nil
+    }
+
     private func sharpURL(raw: URL, settings: RecipeSettings) -> URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("FujiRecipes/sharp/\(RenderCache.rawKey(raw))/\(RenderCache.recipeKey(settings)).jpg")
     }
 
-    private func makeStudioSharp(_ r: Recipe, raw: URL) {
-        let out = sharpURL(raw: raw, settings: r.settings)
-        guard let render = studioRender(r), !FileManager.default.fileExists(atPath: out.path) else { return }
-        if studioDetail?.raw != raw {
-            studioDetail = (raw, Task.detached(priority: .userInitiated) { RenderDetail.embeddedPreview(raw).flatMap { RenderDetail(preview: $0) } })
-        }
-        guard let detail = studioDetail?.detail else { return }
-        Task { [weak self] in
+    /// Asks for one render's sharp version. One at a time, latest asked first, so the cards on screen and the photo
+    /// opened big come before cards scrolled past.
+    func wantSharp(_ r: Recipe) {
+        guard let raw = studioRaw, studioRender(r) != nil, !FileManager.default.fileExists(atPath: sharpURL(raw: raw, settings: r.settings).path) else { return }
+        sharpWanted.removeAll { $0.slug == r.slug }
+        sharpWanted.insert(r, at: 0)
+        guard !sharpWorking else { return }
+        sharpWorking = true
+        Task { [weak self] in await self?.runSharp() }
+    }
+
+    private func runSharp() async {
+        defer { sharpWorking = false }
+        while !sharpWanted.isEmpty {
+            let r = sharpWanted.removeFirst()
+            guard let raw = studioRaw, let render = studioRender(r) else { continue }
+            let out = sharpURL(raw: raw, settings: r.settings)
+            if FileManager.default.fileExists(atPath: out.path) { continue }
+            if studioDetail?.raw != raw {
+                pruneSharp(keeping: out.deletingLastPathComponent())
+                studioDetail = (raw, Task.detached(priority: .userInitiated) { RenderDetail.embeddedPreview(raw).flatMap { RenderDetail(preview: $0) } })
+            }
+            guard let detail = studioDetail?.detail else { continue }
             let made = await Task.detached(priority: .userInitiated) { () -> Bool in
                 guard let d = await detail.value, let jpeg = try? Data(contentsOf: render), let sharp = d.apply(toRender: jpeg) else { return false }
                 try? FileManager.default.createDirectory(at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
                 return (try? RenderCache.tagged(sharp, orientation: RenderCache.orientation(raw)).write(to: out, options: .atomic)) != nil
             }.value
-            if made { self?.studioVersion += 1 }
+            if made { studioVersion += 1 }
+        }
+    }
+
+    /// Every card of a RAW is ~2 MB here: only the three latest RAWs stay.
+    private func pruneSharp(keeping folder: URL) {
+        let root = folder.deletingLastPathComponent()
+        let dirs = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        let date = { (u: URL) in (try? u.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast }
+        for old in dirs.filter({ $0.lastPathComponent != folder.lastPathComponent }).sorted(by: { date($0) > date($1) }).dropFirst(2) {
+            try? FileManager.default.removeItem(at: old)
         }
     }
 

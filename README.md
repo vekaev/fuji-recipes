@@ -49,7 +49,7 @@ by how it looks, not by its numbers, so the photos come first and the settings s
 - **Studio**: pick one of your RAW photos and see it developed by your camera with each recipe, side by side, the way
   FUJIFILM X RAW Studio does it (the camera does the work, so it's the real look). It starts by itself when the camera
   is connected, in big cards across the whole window; arrows move, Space opens one big (developed again at full size;
-  without the camera it's still sharp, with detail from the RAW's own preview, and says so), P picks it for this photo to decide later, F favorites the recipe. Paste (⌘V) a RAF copied in Finder instead of
+  without the camera it's still sharp, with detail from the RAW's own preview, and says so; the cards get that detail too), P picks it for this photo to decide later, F favorites the recipe. Paste (⌘V) a RAF copied in Finder instead of
   choosing one. Renders are kept, so the sheet opens instantly next time.
 - **Match a look**: drop in any photo you love (a Leica shot, a film scan, a post) and get the recipe that brings your
   camera closest. A first guess comes from your library's photos straight away; then your X-E5 develops one of your

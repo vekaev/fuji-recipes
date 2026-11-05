@@ -186,9 +186,15 @@ public struct RenderCache: Sendable {
     public init(root: URL) { self.root = root }
 
     public static func rawKey(_ raw: URL) -> String {
-        let size = (try? FileManager.default.attributesOfItem(atPath: raw.path)[.size] as? NSNumber)?.int64Value ?? 0
+        let attrs = try? FileManager.default.attributesOfItem(atPath: raw.path)
+        let size = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
+        // Asked for by every card on every redraw, and the file may be on a slow card: read once per file version.
+        let version = "\(raw.path)|\(size)|\((attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)"
+        lock.lock(); if let k = rawKeys[version] { lock.unlock(); return k }; lock.unlock()
         let head = (try? FileHandle(forReadingFrom: raw).read(upToCount: 65_536)) ?? Data()
-        return fnv(head + Data(String(size).utf8))
+        let key = fnv(head + Data(String(size).utf8))
+        lock.lock(); rawKeys[version] = key; lock.unlock()
+        return key
     }
 
     public static func recipeKey(_ s: RecipeSettings, exposure: Double? = nil) -> String {
@@ -222,6 +228,7 @@ public struct RenderCache: Sendable {
 
     nonisolated(unsafe) private static var orientations: [String: Int] = [:]
     nonisolated(unsafe) private static var uprighted: Set<String> = []
+    nonisolated(unsafe) private static var rawKeys: [String: String] = [:]
     private static let lock = NSLock()
 
     /// The RAW's EXIF orientation, 1 = upright (read once per file).

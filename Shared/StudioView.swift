@@ -146,12 +146,12 @@ struct StudioView: View {
     }
 
     /// The grid's cells: the photo as shot, then each recipe (rendered or not yet).
-    struct Item: Identifiable { let id: String; let title: String; let path: String?; let recipe: Recipe? }
+    struct Item: Identifiable { let id: String; let title: String; let path: String?; let recipe: Recipe?; var better: String? = nil }
 
     private func studioItems(_ recipes: [Recipe]) -> [Item] {
         guard let raw = model.studioRaw else { return [] }
         return [Item(id: "as-shot", title: "As shot", path: raw.path, recipe: nil)]
-            + recipes.map { Item(id: $0.slug, title: $0.name, path: model.studioRender($0)?.path, recipe: $0) }
+            + recipes.map { Item(id: $0.slug, title: $0.name, path: model.studioRender($0)?.path, recipe: $0, better: model.studioBetter($0)) }
     }
 
     /// Columns from the width: cards at least 340 pt wide on the Mac / iPad (3 in a 1200 pt window, 5 on a wide
@@ -201,12 +201,19 @@ struct StudioView: View {
         VStack(alignment: .leading, spacing: 7) {
             ZStack {
                 if let path = item.path {
-                    PhotoCell(path: path, ratio: ratio, maxPixel: 1000, radius: 10).onTapGesture(perform: open)
+                    PhotoCell(path: path, ratio: ratio, maxPixel: 1400, radius: 10, over: item.better).onTapGesture(perform: open)
                 } else {
                     Shimmer().aspectRatio(ratio, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .opacity(model.studioRendering ? 1 : 0.35)
                 }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(item.title)
+            .accessibilityValue(item.better == nil ? "" : "sharp")
+            .accessibilityIdentifier("studio.photo.\(item.title)")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { open() }
+            .task(id: item.path) { if let r = item.recipe { model.wantSharp(r) } }     // only cards near the screen (the grid is lazy)
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.ink, lineWidth: selected ? 2.5 : 0).padding(-4))
             .overlay(alignment: .topTrailing) {
                 if let r = item.recipe, model.studioPicks.contains(r.slug) {
