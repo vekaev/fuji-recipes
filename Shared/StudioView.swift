@@ -11,10 +11,14 @@ struct StudioView: View {
     @Environment(\.regularLayout) private var regular
     @State private var picking = false
     @State private var dropTargeted = false
+    @State private var gridWidth: CGFloat = 900
+    @FocusState private var gridFocused: Bool
 
     var body: some View {
         let recipes = model.studioRecipes
         let _ = model.studioVersion   // re-read the cache when a render lands
+        let items = studioItems(recipes)
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
@@ -46,10 +50,27 @@ struct StudioView: View {
                 }
             }
             .padding(.horizontal, regular ? 34 : 18).padding(.vertical, regular ? 26 : 16)
-            .frame(maxWidth: 1200, alignment: .leading)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .leading)   // the whole window: big cards (owner, 2026-11-05)
         }
         .background(Theme.paper)
+        // Keys (Mac, iPad keyboard): arrows move the selection (↑↓ by a row), Space / ↵ opens it big, P picks it for
+        // this photo, F favorites the recipe. The big view's own keys take over while it's open.
+        .modifier(StudioKeys(enabled: regular && model.studioMode == .recipes && model.studioRaw != nil, focused: $gridFocused,
+                             move: { d in move(d, items.count, proxy: proxy, items: items) },
+                             open: { open(items, at: model.studioSelected) },
+                             pick: { if let r = items[safe: model.studioSelected]?.recipe { model.togglePick(r.slug) } },
+                             favorite: { if let r = items[safe: model.studioSelected]?.recipe { model.toggleFavorite(r) } }))
+        .onChange(of: model.preview?.index) { _, _ in   // stepping in the big view moves the selection with it
+            guard let p = model.preview, let rs = p.recipes else { return }
+            let id = rs[p.index] ?? "as-shot"
+            if let i = items.firstIndex(where: { $0.id == id }) { model.studioSelected = i; proxy.scrollTo(id) }
+        }
+        .onChange(of: model.preview == nil) { _, closed in if closed { gridFocused = true } }
+        }
+        // Renders by itself when a RAW is here and the camera is connected (and again when either changes).
+        .task(id: "\(model.studioRaw?.path ?? "")|\(model.studioFilter ?? "")|\(model.connected)|\(model.studioMode)|\(model.recipes.count)") {
+            model.autoRenderStudio()
+        }
         .fileImporter(isPresented: $picking, allowedContentTypes: [UTType(filenameExtension: "RAF") ?? .rawImage, .rawImage]) { result in
             guard let url = try? result.get() else { return }
             model.useStudioRaw(url)
@@ -92,6 +113,7 @@ struct StudioView: View {
                 chip("All \(model.recipes.count)", "all")
                 chip("♡", "status:favorite")
                 chip("To try", "status:to-try")
+                if !model.studioPicks.isEmpty { chip("Picked \(model.studioPicks.count)", "picked") }
                 if !model.allTags.isEmpty { Theme.line.frame(width: 1, height: 16).padding(.horizontal, 4) }
                 ForEach(model.allTags, id: \.self) { chip($0, $0) }
             }
@@ -111,9 +133,10 @@ struct StudioView: View {
                 Text("\(model.studioProgress.done) of \(model.studioProgress.total)").font(.system(size: 12.5)).foregroundStyle(.secondary).monospacedDigit()
                 PillButton(title: "Stop") { model.stopStudio() }
             } else if missing > 0 {
-                Pill(title: "Render \(missing) recipe\(missing == 1 ? "" : "s")") { model.renderStudio() }
+                Pill(title: "Render \(missing) recipe\(missing == 1 ? "" : "s")") { model.studioStopped = false; model.renderStudio() }
                     .accessibilityIdentifier("studio.render")
-                Text(model.connected ? "About 2 s each on the camera." : "Plug in the camera to render.")
+                Text(model.connected ? (model.studioStopped ? "Stopped. About 2 s each on the camera." : "About 2 s each on the camera.")
+                                     : "Plug in the camera: it develops the RAW itself, then this starts on its own.")
                     .font(.system(size: 12.5)).foregroundStyle(.secondary)
             } else {
                 Text("All \(recipes.count) rendered.").font(.system(size: 13)).foregroundStyle(.secondary)
@@ -122,49 +145,140 @@ struct StudioView: View {
         }
     }
 
-    private func grid(_ recipes: [Recipe]) -> some View {
-        let rendered = recipes.compactMap { r in model.studioRender(r).map { (r, $0) } }
-        let paths = [model.studioRaw!.path] + rendered.map(\.1.path)
-        let titles = ["As shot"] + rendered.map(\.0.name)
-        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: regular ? 4 : 2), spacing: 14) {
-            tile(title: "As shot", path: model.studioRaw!.path, recipe: nil) { model.show(paths, at: 0, title: "As shot", titles: titles) }
-            ForEach(recipes, id: \.slug) { r in
-                let path = model.studioRender(r)?.path
-                tile(title: r.name, path: path, recipe: r) {
-                    if let path, let i = paths.firstIndex(of: path) { model.show(paths, at: i, title: r.name, titles: titles) }
-                }
-            }
-        }
+    /// The grid's cells: the photo as shot, then each recipe (rendered or not yet).
+    struct Item: Identifiable { let id: String; let title: String; let path: String?; let recipe: Recipe? }
+
+    private func studioItems(_ recipes: [Recipe]) -> [Item] {
+        guard let raw = model.studioRaw else { return [] }
+        return [Item(id: "as-shot", title: "As shot", path: raw.path, recipe: nil)]
+            + recipes.map { Item(id: $0.slug, title: $0.name, path: model.studioRender($0)?.path, recipe: $0) }
     }
 
-    private func tile(title: String, path: String?, recipe: Recipe?, open: @escaping () -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+    /// Columns from the width: cards at least 340 pt wide on the Mac / iPad (3 in a 1200 pt window, 5 on a wide
+    /// screen), one per row on an iPhone held upright.
+    private func columns(_ width: CGFloat) -> Int {
+        let minimum: CGFloat = regular ? 340 : 280, gap: CGFloat = regular ? 18 : 12
+        return max(1, Int((width + gap) / (minimum + gap)))
+    }
+
+    /// A vertical shot gets vertical cards (the camera's previews are 4:3 with bars; filling 2:3 or 3:2 hides them).
+    private var ratio: CGFloat {
+        guard let raw = model.studioRaw else { return 3 / 2 }
+        return (5...8).contains(RenderCache.orientation(raw)) ? 2 / 3 : 3 / 2
+    }
+
+    private func grid(_ recipes: [Recipe]) -> some View {
+        let items = studioItems(recipes)
+        let n = columns(gridWidth)
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: regular ? 18 : 12), count: n), spacing: regular ? 22 : 16) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
+                tile(item, selected: regular && i == model.studioSelected) {
+                    model.studioSelected = i; gridFocused = true
+                    open(items, at: i)
+                }
+                .id(item.id)
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { gridWidth = $0 }
+    }
+
+    private func open(_ items: [Item], at i: Int) {
+        guard let item = items[safe: i], item.path != nil else { return }
+        let shown = items.filter { $0.path != nil }
+        guard let at = shown.firstIndex(where: { $0.id == item.id }) else { return }
+        model.show(shown.map { $0.path! }, at: at, title: item.title, titles: shown.map(\.title),
+                   recipes: shown.map { $0.recipe?.slug })
+    }
+
+    private func move(_ d: StudioKeys.Move, _ count: Int, proxy: ScrollViewProxy, items: [Item]) {
+        guard count > 0 else { return }
+        let n = columns(gridWidth)
+        let step: Int = switch d { case .left: -1; case .right: 1; case .up: -n; case .down: n }
+        let next = model.studioSelected + step
+        guard next >= 0, next < count else { return }
+        model.studioSelected = next
+        withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(items[next].id) }
+    }
+
+    private func tile(_ item: Item, selected: Bool, open: @escaping () -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
             ZStack {
-                if let path {
-                    PhotoCell(path: path, ratio: 3 / 2, maxPixel: 700, radius: 8).onTapGesture(perform: open)
+                if let path = item.path {
+                    PhotoCell(path: path, ratio: ratio, maxPixel: 1000, radius: 10).onTapGesture(perform: open)
                 } else {
-                    Shimmer().aspectRatio(3 / 2, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    Shimmer().aspectRatio(ratio, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .opacity(model.studioRendering ? 1 : 0.35)
                 }
             }
-            HStack(spacing: 6) {
-                Text(title).font(.system(size: 13.5, weight: .semibold)).lineLimit(1)
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.ink, lineWidth: selected ? 2.5 : 0).padding(-4))
+            .overlay(alignment: .topTrailing) {
+                if let r = item.recipe, model.studioPicks.contains(r.slug) {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 20)).foregroundStyle(.white, Theme.ink)
+                        .padding(8).accessibilityHidden(true)
+                }
+            }
+            HStack(spacing: 10) {
+                Text(item.title).font(.system(size: regular ? 15 : 14, weight: .semibold)).lineLimit(1)
                 Spacer(minLength: 4)
-                if let r = recipe {
+                if let r = item.recipe {
+                    let picked = model.studioPicks.contains(r.slug)
+                    Button { model.togglePick(r.slug) } label: {
+                        Image(systemName: picked ? "checkmark.circle.fill" : "checkmark.circle").font(.system(size: 15))
+                    }
+                    .buttonStyle(.plain).pointer().foregroundStyle(picked ? Theme.ink : Color.secondary)
+                    .help("Pick for this photo (P)")
+                    .accessibilityLabel(picked ? "Unpick \(r.name) for this photo" : "Pick \(r.name) for this photo")
+                    .accessibilityIdentifier("studio.pick.\(r.name)")
                     Button { model.toggleFavorite(r) } label: {
-                        Image(systemName: r.status == "favorite" ? "heart.fill" : "heart").font(.system(size: 13))
+                        Image(systemName: r.status == "favorite" ? "heart.fill" : "heart").font(.system(size: 14))
                     }
                     .buttonStyle(.plain).pointer().foregroundStyle(r.status == "favorite" ? Theme.ink : Color.secondary)
+                    .help("Favorite recipe (F)")
                     .accessibilityLabel(r.status == "favorite" ? "Remove \(r.name) from favorites" : "Favorite \(r.name)")
                 }
             }
-            if let r = recipe, let notes = model.studioNotes[r.slug] {
+            if let r = item.recipe, let notes = model.studioNotes[r.slug] {
                 Text(notes.joined(separator: " · ")).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("studio.tile.\(title)")
+        .accessibilityIdentifier("studio.tile.\(item.title)")
     }
+}
+
+/// The Studio grid's keys, only while it can take them (Mac, iPad with a keyboard).
+struct StudioKeys: ViewModifier {
+    enum Move { case left, right, up, down }
+    let enabled: Bool
+    var focused: FocusState<Bool>.Binding
+    let move: (Move) -> Void
+    let open: () -> Void
+    let pick: () -> Void
+    let favorite: () -> Void
+    @Environment(AppModel.self) private var model
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content
+                .focusable().focusEffectDisabled().focused(focused)
+                .onAppear { focused.wrappedValue = true }
+                .onKeyPress(.leftArrow) { move(.left); return .handled }
+                .onKeyPress(.rightArrow) { move(.right); return .handled }
+                .onKeyPress(.upArrow) { move(.up); return .handled }
+                .onKeyPress(.downArrow) { move(.down); return .handled }
+                .onKeyPress(.space) { open(); return .handled }
+                .onKeyPress(.return) { open(); return .handled }
+                // P / F, also where a Cyrillic layout puts them (з / а).
+                .onKeyPress(characters: CharacterSet(charactersIn: "pPзЗ"), phases: .down) { _ in pick(); return .handled }
+                .onKeyPress(characters: CharacterSet(charactersIn: "fFаА"), phases: .down) { _ in favorite(); return .handled }
+        } else {
+            content
+        }
+    }
+}
+
+extension Array {
+    subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
 }
 
 /// Match a look: a reference photo, what it looks like in the library, a first guess, then the camera's search on your

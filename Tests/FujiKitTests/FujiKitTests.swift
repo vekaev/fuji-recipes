@@ -441,3 +441,31 @@ final class MatchLookTests: XCTestCase {
         XCTAssertTrue(LookIndex.photos(first.recipe, library: lib).isEmpty, "the reference photo isn't a sample of the recipe")
     }
 }
+
+/// The camera's renders come in sensor orientation without a tag; the cache tags them with the RAW's orientation
+/// (metadata only), so a vertical shot isn't shown sideways.
+final class RenderOrientationTests: XCTestCase {
+    func jpeg() -> Data {
+        let ctx = CGContext(data: nil, width: 64, height: 48, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+        ctx.setFillColor(CGColor(red: 0.8, green: 0.5, blue: 0.2, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: 64, height: 48))
+        let out = NSMutableData()
+        let dst = CGImageDestinationCreateWithData(out, "public.jpeg" as CFString, 1, nil)!
+        CGImageDestinationAddImage(dst, ctx.makeImage()!, nil); CGImageDestinationFinalize(dst)
+        return out as Data
+    }
+
+    func orientation(_ d: Data) -> Int {
+        let src = CGImageSourceCreateWithData(d as CFData, nil)!
+        return ((CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any])?[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
+    }
+
+    func testTaggedKeepsPixelsAndSetsOrientation() {
+        let d = jpeg()
+        let t = RenderCache.tagged(d, orientation: 8)
+        XCTAssertEqual(orientation(t), 8)
+        XCTAssertLessThan(abs(t.count - d.count), 1024, "metadata only, not re-encoded")
+        XCTAssertEqual(RenderCache.tagged(t, orientation: 8), t, "already right: unchanged")
+        XCTAssertEqual(RenderCache.tagged(d, orientation: 1), d, "upright RAW: unchanged")
+    }
+}

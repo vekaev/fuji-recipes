@@ -1,5 +1,6 @@
 import FujiKit
 import Foundation
+import ImageIO
 import Observation
 import SwiftUI
 
@@ -24,7 +25,12 @@ final class AppModel {
         var unused: Bool { cam == RecipeSettings.factory && camName.isEmpty }
     }
 
-    struct Preview: Equatable { var title: String; var paths: [String]; var index: Int; var titles: [String]? = nil }
+    /// `recipes`: the Studio's preview knows which recipe each photo is (nil = as shot), so it can fetch a full-size
+    /// render of the one shown and pick / favorite it.
+    struct Preview: Equatable {
+        var title: String; var paths: [String]; var index: Int; var titles: [String]? = nil
+        var recipes: [String?]? = nil
+    }
 
     var tab: Tab = .looks
     var sheet: Sheet?
@@ -299,17 +305,25 @@ final class AppModel {
         reload()
     }
 
-    func show(_ paths: [String], at i: Int, title: String, titles: [String]? = nil) {
+    func show(_ paths: [String], at i: Int, title: String, titles: [String]? = nil, recipes: [String?]? = nil) {
         guard !paths.isEmpty else { return }
-        preview = Preview(title: title, paths: paths, index: max(0, min(paths.count - 1, i)), titles: titles)
+        preview = Preview(title: title, paths: paths, index: max(0, min(paths.count - 1, i)), titles: titles, recipes: recipes)
     }
 
     // MARK: Studio: one RAW, developed by the camera with each recipe
 
     var studioRaw: URL? {
-        didSet { studioBase = nil; studioNotes = [:]; UserDefaults.standard.set(studioRaw?.path, forKey: "studioRaw") }
+        didSet {
+            studioBase = nil; studioNotes = [:]; studioStopped = false; studioSelected = 0
+            UserDefaults.standard.set(studioRaw?.path, forKey: "studioRaw")
+            loadStudioPicks()
+        }
     }
-    var studioFilter: String?           // like tagFilter: nil = favorites + to try; "all"; "status:…"; a tag
+    var studioFilter: String? { didSet { studioStopped = false } }  // like tagFilter: nil = favorites + to try; "all"; "status:…"; "picked"; a tag
+    var studioSelected = 0              // keyboard selection in the grid: 0 = as shot, then the recipes in order
+    var studioStopped = false           // Stop pressed: no automatic render until the RAW or the filter changes
+    var studioFullLoading: String?      // recipe slug whose full-size render is on its way
+    private var studioFullWanted: String?
     var studioRendering = false
     var studioProgress = (done: 0, total: 0)
     var studioNotes: [String: [String]] = [:]   // recipe slug → what the camera couldn't render exactly
@@ -322,6 +336,7 @@ final class AppModel {
         switch studioFilter {
         case nil: let picked = recipes.filter { $0.status == "favorite" || $0.status == "to-try" }; return picked.isEmpty ? recipes : picked
         case "all"?: return recipes
+        case "picked"?: return recipes.filter { studioPicks.contains($0.slug) }
         case let f? where f.hasPrefix("status:"): return recipes.filter { $0.status == f.dropFirst(7) }
         case let f?: return recipes.filter { ($0.tags ?? []).contains(f) || (f == "B&W" && $0.settings.isMonochrome) }
         }
@@ -363,13 +378,90 @@ final class AppModel {
                     self.studioVersion += 1
                 }
                 self.say(Task.isCancelled ? "Stopped" : "Rendered \(todo.count) recipe\(todo.count == 1 ? "" : "s")")
+                self.studioRendering = false
+                if let want = self.studioFullWanted { self.loadStudioFull(want) }
             } catch {
                 self.studioError = "\(error)"
             }
         }
     }
 
-    func stopStudio() { studioTask?.cancel(); lookTask?.cancel() }
+    func stopStudio() { studioStopped = true; studioTask?.cancel(); lookTask?.cancel() }
+
+    /// The Studio renders by itself: whenever it shows a RAW with recipes not developed yet and the camera is
+    /// connected (quietly: no toast when there's nothing to do, no error without a camera). Stop pauses it until the
+    /// RAW or the filter changes.
+    func autoRenderStudio() {
+        guard tab == .studio, studioMode == .recipes, connected, !writing, !studioRendering, !studioStopped,
+              studioRaw != nil, studioRecipes.contains(where: { studioRender($0) == nil }) else { return }
+        renderStudio()
+    }
+
+    // Full size: the grid's renders are the camera's 640-px previews; the photo opened big is developed again at full
+    // size (about 5 s), kept at 3000 px in the cache, and the preview switches to it.
+
+    func studioFull(_ slug: String) -> URL? {
+        guard let raw = studioRaw, let r = recipes.first(where: { $0.slug == slug }) else { return nil }
+        return RenderCache(library: library).cached(raw: raw, settings: r.settings, full: true)
+    }
+
+    func loadStudioFull(_ slug: String?) {
+        studioFullWanted = slug
+        guard let slug, let raw = studioRaw, let r = recipes.first(where: { $0.slug == slug }),
+              studioFull(slug) == nil, connected, !writing, studioFullLoading == nil else { return }
+        guard !studioRendering else { return }      // the grid's renders go first; picked up when they finish
+        studioFullLoading = slug
+        Task { [weak self] in
+            guard let self else { return }
+            defer {
+                self.studioFullLoading = nil
+                if let next = self.studioFullWanted, next != slug { self.loadStudioFull(next) }
+            }
+            do {
+                guard let cam = await Cameras.shared.current() else { return }
+                if self.studioBase == nil { self.studioBase = try await cam.uploadRAF(try Data(contentsOf: raw)) }
+                let made = try await cam.render(r.settings, base: self.studioBase!, full: true, timeout: 90)
+                try RenderCache(library: self.library).store(Self.shrunk(made.jpeg, to: 3000), raw: raw, settings: r.settings, full: true)
+                self.studioVersion += 1
+            } catch {
+                self.say("Couldn't develop \(r.name) at full size: \(error)")
+            }
+        }
+    }
+
+    /// A full-size render (~25 MB) kept at `side` px on its long side, in the sensor's orientation (the cache tags it).
+    static func shrunk(_ jpeg: Data, to side: Int) -> Data {
+        guard let src = CGImageSourceCreateWithData(jpeg as CFData, nil),
+              let img = CGImageSourceCreateThumbnailAtIndex(src, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                                                     kCGImageSourceThumbnailMaxPixelSize: side] as CFDictionary) else { return jpeg }
+        let out = NSMutableData()
+        guard let dst = CGImageDestinationCreateWithData(out, "public.jpeg" as CFString, 1, nil) else { return jpeg }
+        CGImageDestinationAddImage(dst, img, [kCGImageDestinationLossyCompressionQuality: 0.92] as CFDictionary)
+        return CGImageDestinationFinalize(dst) ? out as Data : jpeg
+    }
+
+    // Picks: the recipes you like for this photo, to decide later. Per RAW, in the library's studio/picks.json
+    // (RAW key → recipe slugs), so they sync with the library and survive renders being cleared.
+
+    private(set) var studioPicks: Set<String> = []
+
+    private var picksFile: URL { library.root.appendingPathComponent("studio/picks.json") }
+
+    private func loadStudioPicks() {
+        guard let raw = studioRaw, let d = try? Data(contentsOf: picksFile),
+              let all = try? JSONDecoder().decode([String: [String]].self, from: d) else { studioPicks = []; return }
+        studioPicks = Set(all[RenderCache.rawKey(raw)] ?? [])
+    }
+
+    func togglePick(_ slug: String) {
+        guard let raw = studioRaw else { return }
+        var all = (try? JSONDecoder().decode([String: [String]].self, from: Data(contentsOf: picksFile))) ?? [:]
+        if studioPicks.contains(slug) { studioPicks.remove(slug) } else { studioPicks.insert(slug) }
+        all[RenderCache.rawKey(raw)] = studioPicks.sorted()
+        try? FileManager.default.createDirectory(at: picksFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let d = try? JSONEncoder().encode(all) { try? d.write(to: picksFile, options: .atomic) }
+        if studioFilter == "picked", studioPicks.isEmpty { studioFilter = nil }
+    }
 
     // MARK: Match a look: any photo in, the recipe that comes closest out
 

@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 
 /// In-camera RAW development, as FUJIFILM X RAW Studio does it: upload one RAF, then for each recipe patch the
 /// conversion profile (0xD185), trigger (0xD183), wait for the new object, fetch it and delete it from the camera.
@@ -201,15 +202,66 @@ public struct RenderCache: Sendable {
 
     public func cached(raw: URL, settings: RecipeSettings, exposure: Double? = nil, full: Bool = false) -> URL? {
         let u = url(raw: raw, settings: settings, exposure: exposure, full: full)
-        return FileManager.default.fileExists(atPath: u.path) ? u : nil
+        guard FileManager.default.fileExists(atPath: u.path) else { return nil }
+        upright(rawFolder: u.deletingLastPathComponent(), raw: raw)
+        return u
     }
 
     @discardableResult
     public func store(_ jpeg: Data, raw: URL, settings: RecipeSettings, exposure: Double? = nil, full: Bool = false) throws -> URL {
         let u = url(raw: raw, settings: settings, exposure: exposure, full: full)
         try FileManager.default.createDirectory(at: u.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try jpeg.write(to: u, options: .atomic)
+        try Self.tagged(jpeg, orientation: Self.orientation(raw)).write(to: u, options: .atomic)
         return u
+    }
+
+    // MARK: Orientation
+    // The camera develops in sensor orientation and its JPEG carries no Orientation tag, so a vertical shot came back
+    // sideways. Every render gets the RAW's own EXIF orientation (metadata only, the pixels aren't re-encoded); renders
+    // cached before this are tagged the first time their RAW's folder is read.
+
+    nonisolated(unsafe) private static var orientations: [String: Int] = [:]
+    nonisolated(unsafe) private static var uprighted: Set<String> = []
+    private static let lock = NSLock()
+
+    /// The RAW's EXIF orientation, 1 = upright (read once per file).
+    public static func orientation(_ raw: URL) -> Int {
+        lock.lock(); if let o = orientations[raw.path] { lock.unlock(); return o }; lock.unlock()
+        var o = 1
+        if let src = CGImageSourceCreateWithURL(raw as CFURL, nil),
+           let p = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any] {
+            o = (p[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
+        }
+        lock.lock(); orientations[raw.path] = o; lock.unlock()
+        return o
+    }
+
+    /// The JPEG with its Orientation tag set (unchanged when it's already right).
+    public static func tagged(_ jpeg: Data, orientation o: Int) -> Data {
+        guard let src = CGImageSourceCreateWithData(jpeg as CFData, nil), let type = CGImageSourceGetType(src) else { return jpeg }
+        let now = ((CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any])?[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
+        guard now != o else { return jpeg }
+        let out = NSMutableData()
+        guard let dst = CGImageDestinationCreateWithData(out, type, 1, nil) else { return jpeg }
+        let meta: [CFString: Any] = [kCGImageDestinationOrientation: o]
+        var err: Unmanaged<CFError>?
+        guard CGImageDestinationCopyImageSource(dst, src, meta as CFDictionary, &err) else { return jpeg }
+        return out as Data
+    }
+
+    /// Tags every render of one RAW that predates the orientation fix (once per RAW and run).
+    private func upright(rawFolder: URL, raw: URL) {
+        Self.lock.lock()
+        let first = Self.uprighted.insert(rawFolder.path).inserted
+        Self.lock.unlock()
+        guard first else { return }
+        let o = Self.orientation(raw)
+        guard o != 1, let files = try? FileManager.default.contentsOfDirectory(at: rawFolder, includingPropertiesForKeys: nil) else { return }
+        for f in files where f.pathExtension == "jpg" {
+            guard let d = try? Data(contentsOf: f) else { continue }
+            let t = Self.tagged(d, orientation: o)
+            if t != d { try? t.write(to: f, options: .atomic) }
+        }
     }
 
     static func fnv(_ d: Data) -> String {

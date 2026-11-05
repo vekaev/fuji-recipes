@@ -189,19 +189,41 @@ struct PreviewOverlay: View {
 
     var body: some View {
         if let p = model.preview {
+            let _ = model.studioVersion   // a full-size render landed
+            let slug = p.recipes?[p.index] ?? nil
+            let path = slug.flatMap { model.studioFull($0)?.path } ?? p.paths[p.index]
+            let recipe = slug.flatMap { s in model.recipes.first { $0.slug == s } }
             ZStack {
                 Color.black.opacity(0.92).ignoresSafeArea().onTapGesture { model.preview = nil }
                 VStack(spacing: 12) {
                     HStack {
                         Text(p.titles.map { $0[min(p.index, $0.count - 1)] } ?? p.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
                         Text("\(p.index + 1) / \(p.paths.count)").font(.system(size: 13)).foregroundStyle(.white.opacity(0.6)).monospacedDigit()
+                        if let slug, model.studioFullLoading == slug {
+                            ProgressView().controlSize(.small).tint(.white)
+                            Text("Developing at full size…").font(.system(size: 12.5)).foregroundStyle(.white.opacity(0.6))
+                        }
                         Spacer()
+                        if let r = recipe {
+                            let picked = model.studioPicks.contains(r.slug)
+                            Button { model.togglePick(r.slug) } label: {
+                                Label(picked ? "Picked" : "Pick", systemImage: picked ? "checkmark.circle.fill" : "checkmark.circle")
+                                    .font(.system(size: 14, weight: .medium)).foregroundStyle(.white)
+                            }
+                            .buttonStyle(.plain).pointer().help("Pick for this photo (P)").accessibilityIdentifier("preview.pick")
+                            Button { model.toggleFavorite(r) } label: {
+                                Image(systemName: r.status == "favorite" ? "heart.fill" : "heart").font(.system(size: 15, weight: .medium)).foregroundStyle(.white)
+                                    .frame(width: 36, height: 36)
+                            }
+                            .buttonStyle(.plain).pointer().help("Favorite recipe (F)")
+                            .accessibilityLabel(r.status == "favorite" ? "Remove from favorites" : "Favorite")
+                        }
                         Button { model.preview = nil } label: { Image(systemName: "xmark").font(.system(size: 15, weight: .medium)).foregroundStyle(.white).frame(width: 36, height: 36) }
                             .buttonStyle(.plain).pointer().accessibilityLabel("Close").keyboardShortcut(.cancelAction)
                     }
                     // One photo at a time (no TabView: on the Mac it draws an empty tab bar). Swipe or ← → to move.
-                    PhotoTile(path: p.paths[p.index], maxPixel: 2400, fit: true)
-                        .id(p.index)
+                    PhotoTile(path: path, maxPixel: 2400, fit: true)
+                        .id(path)
                         .offset(x: drag)
                         .contentShape(Rectangle())
                         .gesture(DragGesture(minimumDistance: 20)
@@ -214,7 +236,8 @@ struct PreviewOverlay: View {
                         .transition(.opacity)
                     HStack(spacing: 18) {
                         Button { step(-1) } label: { Image(systemName: "chevron.left").frame(width: 32, height: 32) }.disabled(p.index == 0)
-                        Text(URL(fileURLWithPath: p.paths[p.index]).lastPathComponent).font(.system(size: 12)).foregroundStyle(.white.opacity(0.6))
+                        Text(slug != nil && path != p.paths[p.index] ? "Full size" : URL(fileURLWithPath: p.paths[p.index]).lastPathComponent)
+                            .font(.system(size: 12)).foregroundStyle(.white.opacity(0.6))
                         Button { step(1) } label: { Image(systemName: "chevron.right").frame(width: 32, height: 32) }.disabled(p.index == p.paths.count - 1)
                     }
                     .buttonStyle(.plain).pointer().foregroundStyle(.white).font(.system(size: 17, weight: .medium))
@@ -230,6 +253,15 @@ struct PreviewOverlay: View {
             .onKeyPress(.rightArrow) { step(1); return .handled }
             .onKeyPress(.escape) { model.preview = nil; return .handled }
             .onKeyPress(.space) { model.preview = nil; return .handled }
+            .onKeyPress(characters: CharacterSet(charactersIn: "pPзЗ"), phases: .down) { _ in
+                if let r = recipe { model.togglePick(r.slug) }; return recipe == nil ? .ignored : .handled
+            }
+            .onKeyPress(characters: CharacterSet(charactersIn: "fFаА"), phases: .down) { _ in
+                if let r = recipe { model.toggleFavorite(r) }; return recipe == nil ? .ignored : .handled
+            }
+            // The Studio's photo shown big is developed again at full size (the grid has the camera's 640-px previews).
+            .task(id: slug) { model.loadStudioFull(slug) }
+            .onDisappear { model.loadStudioFull(nil) }
         }
     }
 

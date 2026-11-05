@@ -45,19 +45,22 @@ final class FujiRecipesUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'c3: empty'")).firstMatch.waitForExistence(timeout: 10))
     }
 
-    /// Studio: the RAW is there, Render develops every chosen recipe on the camera, tiles appear, a tile opens big.
+    /// Studio: with the camera connected it renders every chosen recipe by itself, tiles appear, a recipe can be
+    /// picked for this photo (and the Picked filter shows it), a tile opens big with Pick there too.
     func testStudioRendersAndCompares() {
         tab(1)   // let the simulated camera connect first
         XCTAssertTrue(app.buttons["slot.C1"].waitForExistence(timeout: 15))
         tab(2)
         XCTAssertTrue(app.staticTexts["studio.rawName"].waitForExistence(timeout: 5))
-        let render = app.buttons["studio.render"]
-        XCTAssertTrue(render.waitForExistence(timeout: 5))
-        render.tap()
-        XCTAssertTrue(app.staticTexts["studio.allRendered"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts["studio.allRendered"].waitForExistence(timeout: 40))   // no button press
+        let pick = app.buttons["studio.pick.UI Chrome"]
+        XCTAssertTrue(pick.waitForExistence(timeout: 5))
+        pick.tap()
+        XCTAssertTrue(app.buttons["Picked 1"].waitForExistence(timeout: 5))
         let tile = app.otherElements["studio.tile.UI Chrome"].images.firstMatch
         if tile.exists { tile.tap() } else { app.otherElements["studio.tile.UI Chrome"].tap() }
         XCTAssertTrue(app.buttons["Close"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["preview.pick"].exists)
     }
 
     /// Studio ▸ Paste: a copied photo becomes the look to match (and switches to Match a look); a copied RAF becomes
