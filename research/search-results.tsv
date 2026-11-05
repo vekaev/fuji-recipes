@@ -12,3 +12,10 @@ commit	score	verdict	detail	minutes	description
 -	114.9	discarded	score 114.9 recovered 9 film 6 match 94 floor 92 renders 297	10	the neutral variants also reset clarity and sharpness to 0
 c0fbffd	118.9	kept	score 118.9 recovered 9 film 7 match 93 floor 92 renders 46	7	the first guess's film always reaches the final round (retest of 72fed97 on this benchmark)
 -	118.9	discarded	score 118.9 recovered 9 film 7 match 93 floor 92 renders 107	9	polish the best three finals (a third of the remaining budget each)
+4fc01c9	132.9	kept	score 132.9 recovered 10 film 8 match 93 floor 92 renders 52	6	a black-and-white first guess also tries Reala Ace, Provia and Classic Chrome with everything neutral (a near-colourless colour photo)
+-	104.9	discarded	score 104.9 recovered 8 film 6 match 93 floor 92 renders 160	10	two corrective LM steps for every film before ranking (was one)
+-	132.9	discarded	score 132.9 recovered 10 film 8 match 93 floor 92 renders 282	13	LM starts with lambda 0.2 (was 0.05): smaller, safer first steps
+-	100.9	discarded	score 100.9 recovered 8 film 5 match 93 floor 92 renders 252	12	LM starts with lambda 0.01 (was 0.05): bolder first steps
+-	128.9	discarded	score 128.9 recovered 10 film 7 match 94 floor 92 renders 3	6	four films in the final round (best three + the guess's film, or best four), three steps each
+-	118.9	discarded	score 118.9 recovered 9 film 7 match 93 floor 92 renders 167	10	the best final also tried at the other two dynamic ranges (DR100 / DR200 / DR400), two LM steps each
+-	118.9	discarded	score 118.9 recovered 9 film 7 match 93 floor 92 renders 15	6	the best final also tried at DR100, two LM steps
