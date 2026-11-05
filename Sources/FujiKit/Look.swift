@@ -308,6 +308,12 @@ public enum LookMatch {
             if let c = try await eval(s, "Film simulations") { byFilm.append(c) }
         }
         byFilm.sort { $0.distance < $1.distance }
+        for c in Array(byFilm.prefix(2)) {
+            var s = c.settings; s.wbRed = 0; s.wbBlue = 0; s.highlight = 0; s.shadow = 0
+            if s.isMonochrome { s.monoWarmCool = 0; s.monoMagentaGreen = 0 } else { s.color = 0 }
+            if let n = try await eval(s, "Film simulations") { byFilm.append(n) }
+        }
+        byFilm.sort { $0.distance < $1.distance }
         /// One direction to move in: a single setting, or WB red and blue together (warm/cool, magenta/green), since a
         /// colour cast only moves the right way when both shift. `whole` settings take whole steps, tone half steps.
         struct Axis {
