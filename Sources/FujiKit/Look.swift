@@ -307,6 +307,12 @@ public enum LookMatch {
             else { s.color = start.color ?? 0 }
             if let c = try await eval(s, "Film simulations") { byFilm.append(c) }
         }
+        if start.isMonochrome {
+            for f in ["Reala Ace", "Provia", "Classic Chrome"] {
+                var s = RecipeSettings(); s.film = f; s.color = 0
+                if let n = try await eval(s, "Film simulations") { byFilm.append(n) }
+            }
+        }
         byFilm.sort { $0.distance < $1.distance }
         for c in Array(byFilm.prefix(2)) {
             var s = c.settings; s.wbRed = 0; s.wbBlue = 0; s.highlight = 0; s.shadow = 0
