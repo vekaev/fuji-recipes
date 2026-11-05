@@ -51,6 +51,7 @@ for exp in json.load(open(sys.argv[1])):
     mins = int((time.time() - t0) / 60)
     if score is None:
         open(FILE, "w").write(src)
+        if detail.startswith("build failed"): status(f"skip ({detail[:200]}): {exp['desc']}"); continue
         status(f"stopped: {exp['desc']}: {detail}")
         break
     baseline = best is None or not exp.get("edits") and not exp.get("args")
