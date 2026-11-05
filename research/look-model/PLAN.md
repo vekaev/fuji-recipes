@@ -2,7 +2,8 @@
 
 Goal: someone shows 2–3 photos with a look (other scenes, other photographers). The app finds the X-E5 recipe that
 gives the owner's own RAWs that look. Not a pick from the library: every setting is solved for.
-Target: **9 of 10 test cases look the same as the hidden recipe** (definition below).
+Target: as close as it gets. The owner's bar: "like 9 out of 10, 10 out of 10 also good". The number the loop
+drives down is the mean ΔE00 on val; the match rate (worst eval scene ≤ 3) is reported next to it.
 
 ## What we learned so far (2026-11-05)
 
@@ -20,18 +21,26 @@ Target: **9 of 10 test cases look the same as the hidden recipe** (definition be
 
 ## 1. The test (frozen before any model work; the loop never edits it)
 
-- **Scenes:** ~240 RAFs from the card spread over its 31 days and light (day, shade, dim, night). Split *by day* into
-  train 70% / val 15% / test 15%, so near-identical frames never cross splits.
-- **Recipes:** realistic random recipes over the camera's whole range (every film sim, WB shift, DR, tone, Color,
-  Color Chrome, FX Blue), plus the library's 46 and Fuji X Weekly's 113. Test recipes are never trained on.
-- **A case:** 3 example photos = the hidden recipe developed on 3 test scenes. The system also gets 2 of the owner's
-  RAFs (other test scenes) and returns a recipe.
-- **Judged by the camera:** the found recipe and the hidden one are developed on 3 more unseen test scenes; mean
-  CIEDE2000 between the two. **Pass: ΔE00 ≤ 3** (side by side, hard to tell apart). Score = share of cases passed.
-  Also reported: film right, each setting's error, mean ΔE.
-- **Wild set** (real photos, not our renders): Fuji X Weekly's 452 sample photos of 113 published recipes, and the
-  owner's own JPEGs from other days; same pass rule (published / EXIF recipe vs found, developed on test RAFs).
-- val is for the loop; test and wild only at milestones, and every number is logged.
+Built by `scenes.py` and `recipes.py`, judged by `score.py`; reviewed by a red-team agent before any render.
+
+- **Scenes:** 415 of the owner's X-E5 RAFs, split by shooting session (a gap over 6 h), never by frame: train 217,
+  val 99, test 99, with the same mix of light (day / shade / dim / night) and as-shot dynamic range in val and test.
+- **Roles in val and test:** *owner* scenes (DR400 shots, so any DR renders and their EXIF tells nothing) are the RAWs
+  a method gets and the eval scenes. *Ref* scenes only appear as example photos: rendered JPEGs, re-encoded under
+  salted names, no EXIF; their RAWs are never given to a method or decoded. So a case is really cross-scene.
+- **Recipes:** half real (the library's recipes for that split, and small changes of them), half random over the
+  camera's whole range (DR100/200/400 only: Auto and D-Range Priority don't render from a RAW). Library recipes near a
+  val or test recipe never seed training.
+- **A case:** `score.py` runs the method once per case, in a fresh process, on a copy of the case folder: `refs/` (3
+  example photos) and `inputs.json` (2 owner RAFs). The method prints a recipe.
+- **Judged by the camera:** the found and the hidden recipe are developed on 3 more owner scenes; grain, sharpness
+  and NR are copied from the hidden recipe first (texture, not look), the renders are shrunk 4×, and CIEDE2000 is
+  averaged per scene. Reported: mean ΔE (the loop's number), match rate (worst scene ≤ 3), film right, and separately
+  colour / B&W and real / random recipes.
+- **Holdout:** the test cases, their RAWs and renders live in `~/Library/Caches/FujiRecipes/look-holdout`, which no
+  loop agent may read. Test is scored only at milestones and logs only the summary. 80 val + 80 test cases.
+- **Sweep:** every setting at its extremes on 3 train scenes, to learn which ones the camera ignores (e.g. FX Blue on
+  B&W) and how far each moves the look; labels of settings that don't show are dropped from training.
 
 ## 2. Data
 

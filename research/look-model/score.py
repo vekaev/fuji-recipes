@@ -4,78 +4,134 @@
 # ///
 """The fixed evaluation of the look model (research/look-model/PLAN.md). The improvement loop never edits this file.
 
-uv run research/look-model/score.py <val|test> <predictions.json> [--label name]
+  uv run research/look-model/score.py val --predict "<command>" [--label name]
+  uv run research/look-model/score.py val --predictions preds.json [--label name]      (val only)
+  uv run research/look-model/score.py test --predict "<command>" --label name          (milestones only)
 
-predictions.json: {"<case id>": {recipe settings}, ...} for every case of the split. The camera develops each found
-recipe on the case's 3 eval scenes (cached), and they are compared with the hidden recipe's renders of the same scenes:
-mean CIEDE2000 per case. Pass: ΔE00 <= 3. Prints one line:
-  score 0.725 passed 29/40 dE 2.41 film 0.55 | <label>
-and appends it, with every case, to <data>/scores.jsonl. Needs the camera only for renders not cached yet.
+Each case runs `<command> <case folder>` in its own process. The folder holds only what a user would give: refs/*.jpg
+(the hidden recipe developed on 3 scenes the method never gets the RAWs of; re-encoded, random names, no EXIF) and
+inputs.json (2 of the owner's RAFs). The command prints the recipe as JSON on its last line.
+
+Judging: the found recipe and the hidden one are developed on 3 more of the owner's scenes. Grain, sharpness and
+noise reduction are copied from the hidden recipe first (texture, not the look), the renders are shrunk 4x, and
+CIEDE2000 is averaged per scene. A case matches when its worst scene is <= 3.
+Prints: "dE 2.84 match 0.61 (49/80) worst 3.10 film 0.55 | colour dE … | mono dE … | label" (lower dE is better).
+val: every case goes to look-model/scores.jsonl. test: only the summary, to look-holdout/scores.jsonl.
 """
-import json, os, subprocess, sys, tempfile, time
+import json, os, random, shutil, subprocess, sys, tempfile, time, hashlib
 import numpy as np
 from PIL import Image
 from skimage.color import rgb2lab, deltaE_ciede2000
 
 DATA = os.path.expanduser("~/Library/Caches/FujiRecipes/look-model")
+HOLD = os.path.expanduser("~/Library/Caches/FujiRecipes/look-holdout")
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FUJI = os.path.join(REPO, ".build/debug/fuji")
-PASS = 3.0
+MATCH = 3.0
+TEXTURE = ("grain_roughness", "grain_size", "sharpness", "high_iso_nr")
+
+
+def arg(name, default=None):
+    return sys.argv[sys.argv.index(name) + 1] if name in sys.argv else default
 
 
 def lab(path):
     im = Image.open(path).convert("RGB")
+    im = im.resize((max(1, im.width // 4), max(1, im.height // 4)), Image.BOX)
     return rgb2lab(np.asarray(im, dtype=np.float64) / 255.0)
 
 
 def delta(a, b):
     A, B = lab(a), lab(b)
-    if A.shape != B.shape:   # same RAW, so this shouldn't happen; crop to the common size
-        h, w = min(A.shape[0], B.shape[0]), min(A.shape[1], B.shape[1]); A, B = A[:h, :w], B[:h, :w]
-    return float(deltaE_ciede2000(A, B).mean())
+    h, w = min(A.shape[0], B.shape[0]), min(A.shape[1], B.shape[1])
+    return float(deltaE_ciede2000(A[:h, :w], B[:h, :w]).mean())
 
 
-def render(jobs):
-    """Runs the camera batch for [(raf, settings)] and returns the JPEG path per job (None if it failed)."""
+def render(jobs, cache):
     with tempfile.TemporaryDirectory() as t:
         jp, mp = os.path.join(t, "jobs.jsonl"), os.path.join(t, "manifest.jsonl")
         with open(jp, "w") as f:
             for raf, s in jobs: f.write(json.dumps({"raf": raf, "settings": s}) + "\n")
-        r = subprocess.run([FUJI, "render-batch", jp, "--cache", f"{DATA}/renders", "--manifest", mp], capture_output=True, text=True)
+        r = subprocess.run([FUJI, "render-batch", jp, "--cache", cache, "--manifest", mp], capture_output=True, text=True)
         if r.returncode != 0: sys.exit("render-batch failed: " + (r.stdout + r.stderr).strip()[-400:])
-        out = {}
-        for l in open(mp):
-            o = json.loads(l); out[o["line"]] = o["jpeg"]
+        out = {json.loads(l)["line"]: json.loads(l)["jpeg"] for l in open(mp)}
         return [out.get(i) for i in range(len(jobs))]
 
 
+def package(c, base, cache):
+    """The case folder a method sees. Built once; ref names are a hash of a secret salt, so they say nothing."""
+    d = os.path.join(base, "packages", c["id"])
+    if os.path.exists(os.path.join(d, "inputs.json")): return d
+    os.makedirs(os.path.join(d, "refs"), exist_ok=True)
+    salt_file = os.path.join(base, ".salt")
+    if not os.path.exists(salt_file): open(salt_file, "w").write(os.urandom(16).hex())
+    salt = open(salt_file).read()
+    paths = render([(raf, c["recipe"]) for raf in c["refs"]], cache)
+    for i, p in enumerate(paths):
+        if not p: sys.exit(f"reference render failed for {c['id']}")
+        name = hashlib.sha256(f"{salt}{c['id']}{i}".encode()).hexdigest()[:12]
+        Image.open(p).convert("RGB").save(os.path.join(d, "refs", name + ".jpg"), quality=92)   # no EXIF
+    json.dump({"inputs": c["inputs"]}, open(os.path.join(d, "inputs.json"), "w"))
+    return d
+
+
+def predict(cmd, d):
+    with tempfile.TemporaryDirectory() as t:   # a fresh copy, so a method can't leave notes between cases
+        w = os.path.join(t, "case"); shutil.copytree(d, w)
+        r = subprocess.run(cmd + " " + json.dumps(w), shell=True, capture_output=True, text=True, timeout=900)
+        lines = [l for l in r.stdout.strip().splitlines() if l.strip().startswith("{")]
+        if r.returncode != 0 or not lines:
+            print(f"  predictor failed on {os.path.basename(d)}: {(r.stderr or r.stdout).strip()[-300:]}", file=sys.stderr)
+            return None
+        return json.loads(lines[-1])
+
+
 def main():
-    split, pred_path = sys.argv[1], sys.argv[2]
-    label = sys.argv[sys.argv.index("--label") + 1] if "--label" in sys.argv else os.path.basename(pred_path)
-    cases = json.load(open(f"{DATA}/cases-{split}.json"))
-    preds = json.load(open(pred_path))
-    missing = [c["id"] for c in cases if c["id"] not in preds]
-    if missing: sys.exit(f"predictions missing for {len(missing)} cases, e.g. {missing[:3]}")
+    split = sys.argv[1]
+    if split not in ("val", "test"): sys.exit("split: val or test")
+    base = DATA if split == "val" else HOLD
+    cases = json.load(open(f"{base}/cases-{split}.json"))
+    cache = f"{base}/eval-renders"
+    label = arg("--label", "unnamed")
+    if arg("--predictions"):
+        if split == "test": sys.exit("test takes --predict only (each case in its own process)")
+        preds = json.load(open(arg("--predictions")))
+    else:
+        cmd = arg("--predict") or sys.exit("--predict <command> or --predictions <file>")
+        preds = {}
+        for c in cases:
+            preds[c["id"]] = predict(cmd, package(c, base, cache))
     jobs = []
     for c in cases:
-        for raf in c["evals"]:
-            jobs += [(raf, c["recipe"]), (raf, preds[c["id"]])]
-    paths = render(jobs)
-    rows, k = [], 0
+        f = dict(preds.get(c["id"]) or c["recipe"] | {"film": "__none__"})
+        for k in TEXTURE: f[k] = c["recipe"][k]
+        preds[c["id"]] = f
+        for raf in c["evals"]: jobs += [(raf, c["recipe"]), (raf, f)]
+    # A failed prediction has no renders and counts as dE 99.
+    paths = render([(r, s) for r, s in jobs if s.get("film") != "__none__"], cache)
+    it = iter(paths); rows = []
     for c in cases:
+        failed = preds[c["id"]].get("film") == "__none__"
         ds = []
         for _ in c["evals"]:
-            t, f = paths[k], paths[k + 1]; k += 2
+            if failed: ds.append(99.0); continue
+            t, f = next(it), next(it)
             ds.append(delta(t, f) if t and f else 99.0)
-        d = float(np.mean(ds))
-        rows.append({"id": c["id"], "dE": round(d, 2), "pass": d <= PASS,
-                     "film": preds[c["id"]].get("film") == c["recipe"]["film"]})
-    n = len(rows); passed = sum(r["pass"] for r in rows)
-    line = (f"score {passed / n:.3f} passed {passed}/{n} dE {np.mean([r['dE'] for r in rows]):.2f} "
-            f"film {np.mean([r['film'] for r in rows]):.2f} | {label}")
+        mono = c["recipe"].get("color") is None
+        rows.append({"id": c["id"], "source": c["source"].split(":")[0], "mono": mono, "dE": round(float(np.mean(ds)), 2),
+                     "worst": round(max(ds), 2), "match": max(ds) <= MATCH, "film": preds[c["id"]].get("film") == c["recipe"]["film"]})
+
+    def summary(rs):
+        if not rs: return "-"
+        return f"dE {np.mean([r['dE'] for r in rs]):.2f} match {np.mean([r['match'] for r in rs]):.2f} ({sum(r['match'] for r in rs)}/{len(rs)})"
+    line = (f"{summary(rows)} worst {np.mean([r['worst'] for r in rows]):.2f} film {np.mean([r['film'] for r in rows]):.2f}"
+            f" | colour {summary([r for r in rows if not r['mono']])} | mono {summary([r for r in rows if r['mono']])}"
+            f" | real {summary([r for r in rows if r['source'] != 'random'])} | random {summary([r for r in rows if r['source'] == 'random'])}"
+            f" | {label}")
     print(line)
-    with open(f"{DATA}/scores.jsonl", "a") as f:
-        f.write(json.dumps({"time": time.strftime("%Y-%m-%d %H:%M"), "split": split, "label": label, "line": line, "cases": rows}) + "\n")
+    rec = {"time": time.strftime("%Y-%m-%d %H:%M"), "split": split, "label": label, "line": line}
+    if split == "val": rec["cases"] = rows
+    with open(f"{base}/scores.jsonl", "a") as f: f.write(json.dumps(rec) + "\n")
 
 
 main()
