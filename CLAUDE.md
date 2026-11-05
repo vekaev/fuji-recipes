@@ -116,6 +116,11 @@ Shared with `/recipe` and `fuji mcp`: field names in skills/fuji-recipes/referen
 - `fuji match --benchmark [raf]`: 20 hidden recipes (seed 7) developed and found again from their renders alone; one
   score to compare search changes (simulated camera 2026-11-04: 15/20 at 85%+, 12/20 recovered, score 101.6). Run it
   before and after any change to `LookMatch.refine` and keep the change only if the score goes up.
+- `fuji match --real <folder with JPEG+RAF pairs> [--cases N]` is the real test (camera connected, Mac app quit):
+  the JPEG's EXIF recipe is hidden and the camera search must find it. 2026-11-04 on the owner's card: 6/12 recovered,
+  mean match 92% vs 91% for the true recipe itself.
+- `research/`: the first-guess research loop (program.md, `fuji match --score`, results.tsv). Only
+  `Sources/FujiKit/LookGuess.swift` changes during a run.
 - `FujiRecipesUITests` (scheme FujiRecipes-iOS → test): the iPhone app with `-uiTesting` (throwaway library seeded by
   `AppModel.uiTestLibrary`, simulated X-E5): rename a recipe, put one in C3 + Undo, Studio render + preview, Match a look (guess → camera
   search → save → in Recipes), add links.

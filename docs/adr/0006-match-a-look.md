@@ -43,6 +43,30 @@ from the recipe.
 - Reference sets (`fuji match --learn`) can be imported and evaluated but aren't used for guesses.
 - No recipe is taken from a paid recipe's sample metadata.
 
+## On the real X-E5 (2026-11-04)
+
+`fuji match --real <card folder>`: the owner's JPEG + RAF pairs; the JPEG's recipe (EXIF) is hidden, its look is the
+reference, the camera develops the RAF (about 2 s a render, 1–2 minutes a photo), the search must find the recipe.
+12 photos across all 11 recipes on the card, 60 renders each:
+
+- 6 of 12 recovered (right film, every setting within one step), two exactly (Classic Chrome R+4 B−5 H−1.5 Col +4).
+- Mean match 92%; the true recipe re-developed scores 91% against its own JPEG (94–100% on clean pairs), so the look
+  measure works on real photos.
+- Misses: three black-and-white near-ties (Acros vs Acros+G vs Monochrome, 96–99%: the filters barely differ at 640 px),
+  a nearly colourless scene, a pair whose own recipe renders only 55% (the JPEG isn't the RAF's plain development:
+  a crop or an in-camera edit), and two real search failures: a Classic Neg. found first and then dropped (fixed: the
+  first guess's film always reaches the final round) and a plain Astia started from the library's warm average and
+  never reached neutral (fixed: the best films are also tried with everything neutral).
+
+## Research loop (first guess)
+
+`research/` holds an autoresearch-style loop: `Sources/FujiKit/LookGuess.swift` is the one file it changes,
+`fuji match --score` the fixed evaluation (dev: the library's photos; held-out: Fuji X Weekly's 452 photos and 162 of
+the owner's card photos labelled from EXIF), `research/results.tsv` every experiment. 23 experiments, 8 kept: dev
+27.5 → 33.6, held-out (both sets) −30.5 → −28.4. Dropping scene-dependent features (hue, shadow cast, extreme tone
+percentiles), weighting the cast more, k = 6 and softer weights helped; correcting for the library's Classic Neg. bias,
+shrinking WB, dropping saturation or brightness features didn't.
+
 ## Later
 
 The benchmark is the fixed evaluation an autoresearch-style loop (karpathy/autoresearch: an agent edits one file, runs
