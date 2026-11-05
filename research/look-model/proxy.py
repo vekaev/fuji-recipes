@@ -19,7 +19,7 @@ import common
 from common import DATA
 
 dev = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-SCENE_DIM = 9
+SCENE_DIM = 12
 
 
 def arg(n, d=None):

@@ -79,16 +79,34 @@ def load_raw(raf):
     import tifffile
     stem = os.path.splitext(os.path.basename(raf))[0]
     a = tifffile.imread(f"{DATA}/raw/{stem}.tiff").astype(np.float32)[..., :3] / 65535.0
+    if a.shape[0] > a.shape[1]:   # macOS turns portrait shots upright; the camera's preview stays in sensor orientation
+        a = np.ascontiguousarray(np.rot90(a, 3))
     out = np.stack([np.asarray(Image.fromarray(a[..., c], mode="F").resize((W, H), Image.BOX)) for c in range(3)], -1)
     _raw_cache[raf] = out.astype(np.float32)
     return _raw_cache[raf]
 
 
-def scene_meta():
-    m = {}
-    for l in open(f"{DATA}/meta.jsonl"):
-        o = json.loads(l); m[o["raf"]] = o
+def raf_meta(raf):
+    """A RAW's own facts the camera's processing depends on: as-shot white balance and baseline exposure (macOS),
+    ISO and the shot's dynamic range (EXIF). Cached in <data>/meta-cache. Works for any RAF a method is given."""
+    import subprocess
+    stem = os.path.splitext(os.path.basename(raf))[0]
+    path = f"{DATA}/meta-cache/{stem}.json"
+    if os.path.exists(path): return json.load(open(path))
+    os.makedirs(f"{DATA}/meta-cache", exist_ok=True)
+    tmp = f"{DATA}/meta-cache/.{stem}.scenes.json"
+    json.dump([{"raf": raf}], open(tmp, "w"))
+    out = subprocess.run([f"{DATA}/meta", tmp], capture_output=True, text=True).stdout.strip().splitlines()
+    m = json.loads(out[0]) if out else {}
+    e = json.loads(subprocess.run(["exiftool", "-fast", "-j", "-n", "-ISO", "-DevelopmentDynamicRange", raf], capture_output=True, text=True).stdout or "[{}]")[0]
+    m["iso"] = float(e.get("ISO") or 400); m["dr"] = int(e.get("DevelopmentDynamicRange") or 100)
+    json.dump(m, open(path, "w")); os.remove(tmp)
     return m
+
+
+def scene_meta():
+    """{raf: raf_meta(raf)} for every scene in scenes.json."""
+    return {s["raf"]: raf_meta(s["raf"]) for s in json.load(open(f"{DATA}/scenes.json"))}
 
 
 def scene_vec(raw, meta):
@@ -98,4 +116,7 @@ def scene_vec(raw, meta):
     p = np.percentile(ll, [5, 25, 50, 75, 95, 99])
     t = (meta.get("temperature", 5500) - 5500) / 2000 if meta else 0.0
     tint = meta.get("tint", 0) / 20 if meta else 0.0
-    return np.array([*(p / 8), t, tint, ll.mean() / 8], dtype=np.float32)
+    be = meta.get("baseline_exposure", 0) / 2 if meta else 0.0
+    iso = np.log2(meta.get("iso", 400) / 400) / 4 if meta else 0.0
+    dr = 1.0 if meta and meta.get("dr", 100) >= 400 else 0.0
+    return np.array([*(p / 8), t, tint, ll.mean() / 8, be, iso, dr], dtype=np.float32)

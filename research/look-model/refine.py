@@ -57,9 +57,8 @@ def to_recipe(film, wb, dr, cont, cc, fxb):
 
 def fit(encoder, refs, raws, rafs, logits, reg, proxy_path, dev, steps=60, films=3):
     proxy = load_proxy(proxy_path, dev)
-    meta = common.scene_meta()
     R = torch.tensor(np.stack(raws)).to(dev)
-    S = torch.tensor(np.stack([common.scene_vec(r, meta.get(f)) for r, f in zip(raws, rafs)])).to(dev)
+    S = torch.tensor(np.stack([common.scene_vec(r, common.raf_meta(f)) for r, f in zip(raws, rafs)])).to(dev)
     with torch.no_grad():
         target = encoder.embed(refs)
     for p in encoder.parameters(): p.requires_grad_(False)
