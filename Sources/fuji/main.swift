@@ -130,7 +130,7 @@ func cli() -> Int32 {
         return 0
     case "match":
         // fuji match <photo> [file.raf] [--budget N] [--save "Name"]: Match a look from the terminal.
-        let plainArgs = rest.enumerated().filter { i, v in !v.hasPrefix("--") && !(i > 0 && ["--budget", "--save", "--learn", "--name", "--cases", "--seed", "--real", "--out"].contains(rest[i - 1])) }.map(\.element)
+        let plainArgs = rest.enumerated().filter { i, v in !v.hasPrefix("--") && !(i > 0 && ["--budget", "--save", "--learn", "--name", "--cases", "--seed", "--real", "--out", "--shift", "--cache"].contains(rest[i - 1])) }.map(\.element)
         if let i = rest.firstIndex(of: "--learn"), i + 1 < rest.count {
             var args: [String: Any] = ["learn": rest[i + 1]]
             if let j = rest.firstIndex(of: "--name"), j + 1 < rest.count { args["name"] = rest[j + 1] }
@@ -144,6 +144,11 @@ func cli() -> Int32 {
             let n = rest.firstIndex(of: "--cases").flatMap { $0 + 1 < rest.count ? Int(rest[$0 + 1]) : nil } ?? 8
             let budget = rest.firstIndex(of: "--budget").flatMap { $0 + 1 < rest.count ? Int(rest[$0 + 1]) : nil } ?? 60
             let outFile = rest.firstIndex(of: "--out").flatMap { $0 + 1 < rest.count ? rest[$0 + 1] : nil }
+            // --shift k: other shots of the same recipes (a held-out set). --cache <dir>: keep every render on disk, so
+            // a rerun (the research loop) only asks the camera for recipes it hasn't developed for that RAF yet.
+            let shift = rest.firstIndex(of: "--shift").flatMap { $0 + 1 < rest.count ? Int(rest[$0 + 1]) : nil } ?? 0
+            let cache = rest.firstIndex(of: "--cache").flatMap { $0 + 1 < rest.count ? rest[$0 + 1] : nil }
+                .map { RenderCache(root: URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath)) }
             let r = blocking { () async throws -> String in
                 func log(_ s: String) { FileHandle.standardError.write(Data((s + "\n").utf8)) }
                 let groups = try ExifImport.groups(files: ExifImport.files(in: [folder]))
@@ -158,7 +163,7 @@ func cli() -> Int32 {
                         let withRaw = g.files.filter { FileManager.default.fileExists(atPath: ($0 as NSString).deletingPathExtension + ".RAF") }.sorted()
                         let per = max(1, (n + groups.count - 1) / groups.count)
                         guard round < min(per, withRaw.count) else { continue }
-                        picks.append((withRaw[(round * withRaw.count) / per], g.settings))
+                        picks.append((withRaw[((round * withRaw.count) / per + shift) % withRaw.count], g.settings))
                     }
                     round += 1
                 }
@@ -167,16 +172,24 @@ func cli() -> Int32 {
                 let recipes = (try? library.recipes()) ?? []
                 let cam = try await Cameras.shared.require()
                 var rows: [[String: Any]] = []
-                var recovered = 0, filmRight = 0, matchSum = 0, floorSum = 0
+                var recovered = 0, filmRight = 0, matchSum = 0, floorSum = 0, cameraRenders = 0
                 for (k, (jpeg, truth)) in picks.enumerated() {
                     let raf = (jpeg as NSString).deletingPathExtension + ".RAF"
+                    let rafURL = URL(fileURLWithPath: raf)
                     let t0 = Date()
                     let reference = try LookStats.measure(file: URL(fileURLWithPath: jpeg))
-                    let base = try await cam.uploadRAF(try Data(contentsOf: URL(fileURLWithPath: raf)))
-                    let floorRender = try await cam.render(truth, base: base)
-                    let floor = try LookStats.measure(data: floorRender.jpeg).match(to: reference)
+                    var base: ConversionProfile?
+                    func render(_ s: RecipeSettings) async throws -> Data {
+                        if let u = cache?.cached(raw: rafURL, settings: s), let d = try? Data(contentsOf: u) { return d }
+                        if base == nil { base = try await cam.uploadRAF(try Data(contentsOf: rafURL)) }
+                        let jpeg = try await cam.render(s, base: base!).jpeg
+                        cameraRenders += 1
+                        try? cache?.store(jpeg, raw: rafURL, settings: s)
+                        return jpeg
+                    }
+                    let floor = try LookStats.measure(data: try await render(truth)).match(to: reference)
                     let guess = LookMatch.firstGuess(reference, index: index, recipes: recipes).settings
-                    let found = try await LookMatch.refine(reference: reference, start: guess, budget: budget) { try await cam.render($0, base: base).jpeg }
+                    let found = try await LookMatch.refine(reference: reference, start: guess, budget: budget) { try await render($0) }
                     guard let best = found.first else { continue }
                     let f = best.settings
                     let close = (f.film == truth.film || (f.isMonochrome && truth.isMonochrome))
@@ -191,6 +204,9 @@ func cli() -> Int32 {
                 }
                 let c = max(1, rows.count)
                 let summary = "\(rows.count) of your photos: recipe recovered \(recovered), film right \(filmRight); mean match \(matchSum / c)% (the true recipe itself renders \(floorSum / c)%)."
+                // One line for the research loop (research/search.md): recovered recipes count most, then right films.
+                print(String(format: "score %.1f recovered %d film %d match %d floor %d renders %d", Double(10 * recovered + 4 * filmRight) + Double(matchSum) / Double(c) / 100,
+                             recovered, filmRight, matchSum / c, floorSum / c, cameraRenders))
                 if let outFile, let d = try? JSONSerialization.data(withJSONObject: ["summary": summary, "cases": rows], options: [.prettyPrinted]) {
                     try? d.write(to: URL(fileURLWithPath: (outFile as NSString).expandingTildeInPath))
                 }

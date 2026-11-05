@@ -182,6 +182,7 @@ extension FujiCamera {
 public struct RenderCache: Sendable {
     public let root: URL
     public init(library: Library) { root = library.root.appendingPathComponent("renders") }
+    public init(root: URL) { self.root = root }
 
     public static func rawKey(_ raw: URL) -> String {
         let size = (try? FileManager.default.attributesOfItem(atPath: raw.path)[.size] as? NSNumber)?.int64Value ?? 0
