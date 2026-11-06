@@ -11,12 +11,12 @@ from encoder import targets, HEADS
 
 
 class Generator:
-    def __init__(self, model_path, dev, exclude_sessions=(), augment=True):
+    def __init__(self, model_path, dev, augment=True):
         self.dev = dev
         self.augment = augment
         self.model = proxy_mod.Proxy().to(dev)
         self.model.load_state_dict(torch.load(model_path, map_location=dev)); self.model.eval()
-        scenes = [s for s in json.load(open(f"{DATA}/scenes.json")) if s["role"] == "train" and s["session"] not in set(exclude_sessions)]
+        scenes = [s for s in json.load(open(f"{DATA}/scenes.json")) if s["role"] == "train"]
         self.scenes = scenes
         self.R = torch.tensor(np.stack([common.load_raw(s["raf"]) for s in scenes])).to(dev)
         self.S = torch.tensor(np.stack([common.scene_vec(common.load_raw(s["raf"]), common.raf_meta(s["raf"])) for s in scenes])).to(dev)
@@ -30,14 +30,14 @@ class Generator:
         return recipe_mod.perturb(r, r.choice(self.pool)) if self.pool and r.random() < 0.5 else recipe_mod.random_recipe(r)
 
     def scene_batch(self, I):
-        """The raw scenes and their facts, changed a little so the encoder can't memorise them: exposure, colour of the
-        light, mirror."""
+        """The raw scenes and their facts, changed a little so the encoder can't memorise them: exposure, mirror.
+        No change of the light's colour: the scene facts (as-shot white balance) wouldn't follow, so Auto looks would
+        get a cast the camera would have taken out, under a label that says there is none."""
         raw, sc = self.R[I], self.S[I]
         if not self.augment: return raw, sc
         n = len(I)
-        ev = torch.randn(n, device=self.dev) * 0.6
-        gains = torch.exp(torch.randn(n, 3, device=self.dev) * 0.12)
-        raw = (raw * (2 ** ev)[:, None, None, None] * gains[:, None, None, :]).clamp(0, 1)
+        ev = torch.randn(n, device=self.dev) * 0.4
+        raw = (raw * (2 ** ev)[:, None, None, None]).clamp(0, 1)
         flip = torch.rand(n, device=self.dev) < 0.5
         raw = torch.where(flip[:, None, None, None], raw.flip(2), raw)
         sc = sc.clone()

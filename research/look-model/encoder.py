@@ -5,7 +5,7 @@
 """Encoder: 2–3 example photos (other scenes) -> a recipe. Trained on renders of the same recipe on different scenes,
 so it learns the look and not the scene.
 
-uv run research/look-model/encoder.py train [--minutes 20] [--proxy proxy.pt] [--out encoder.pt]
+uv run research/look-model/encoder.py train [--minutes 20] [--proxy proxy.pt [--look w]] [--no-aug] [--seed n] [--out encoder.pt]
   --proxy: also train on looks the camera proxy renders on train scenes (unlimited recipes; Deep Preset style).
 
 The case predictor (predict.py) loads it.
@@ -20,6 +20,9 @@ from common import DATA, FILMS, WBS, DRS, EFF
 dev = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 HEADS = {"film": len(FILMS), "wb": len(WBS), "dr": len(DRS), "cc": len(EFF), "fxb": len(EFF)}
 REG = ["kelvin", "wb_red", "wb_blue", "highlight", "shadow", "color", "wc", "mg", "clarity"]
+# What a whole unit of each (normalised) setting does to the picture, in ΔE (the sweep): the loss counts look, not units.
+REG_W = [7.0, 13.0, 13.0, 0.8, 3.5, 1.6, 8.0, 8.0, 1.5]
+CE_W = {"film": 1.5, "wb": 1.0, "dr": 0.2, "cc": 0.1, "fxb": 0.2}
 
 
 def arg(n, d=None):
@@ -71,6 +74,7 @@ class Encoder(nn.Module):
         self.mix = nn.Sequential(nn.Linear(2 * width + 256, 384), nn.SiLU(), nn.Linear(384, 384), nn.SiLU())
         self.heads = nn.ModuleDict({k: nn.Linear(384, n) for k, n in HEADS.items()})
         self.reg = nn.Linear(384, len(REG))
+        self.shift = nn.Linear(384, 2 * len(WBS))   # WB shift for each mode: "Daylight R-2" and "Auto R+3" can be one look
 
     def embed(self, imgs):
         """imgs (B, N, H, W, 3) sRGB 0..1 -> (B, 384): the look, pooled over the N photos."""
@@ -83,9 +87,18 @@ class Encoder(nn.Module):
         e = self.mix(torch.cat([f, h], 1)).reshape(B, N, -1).mean(1)
         return e
 
-    def forward(self, imgs):
+    def read(self, e, r, shifts, mode):
+        """The settings with the WB shift of the given mode."""
+        return torch.cat([r[:, :1], shifts[torch.arange(len(e), device=e.device), mode], r[:, 3:]], 1)
+
+    def forward(self, imgs, wb=None):
+        """wb: the mode whose shift the regression loss reads (the true one in training): (logits, its settings, the
+        settings of the mode the answer chose). Without wb: (logits, the chosen settings), what predict.py uses."""
         e = self.embed(imgs)
-        return {k: h(e) for k, h in self.heads.items()}, self.reg(e)
+        logits = {k: h(e) for k, h in self.heads.items()}
+        r, shifts = self.reg(e), self.shift(e).reshape(-1, len(WBS), 2)
+        chosen = self.read(e, r, shifts, logits["wb"].argmax(-1))
+        return (logits, chosen) if wb is None else (logits, self.read(e, r, shifts, wb), chosen)
 
 
 def rgb_to_lab(x):
@@ -110,18 +123,12 @@ def histograms(lab):
     return torch.cat(out, 1)
 
 
-HOLD_SESSIONS = 3      # whole train sessions kept out of training, for an honest quick check
-
-
 def real_groups():
-    """Training renders by recipe, split into (train groups [(settings, [previews])] with >= 2 scenes,
-    held groups on sessions never trained on)."""
+    """Training renders by recipe: [(settings, [previews])] with >= 2 scenes. Every train scene counts: the camera
+    score on val is the check, and scenes are what the model is short of."""
     scenes = {x["raf"]: x for x in json.load(open(f"{DATA}/scenes.json")) if x["role"] == "train"}
-    sizes = {}
-    for x in scenes.values(): sizes[x["session"]] = sizes.get(x["session"], 0) + 1
-    ranked = sorted(sizes, key=lambda k: -sizes[k])
-    held = set(ranked[2:2 + HOLD_SESSIONS])      # mid-sized sessions: the biggest stay for training
-    tr, ho = {}, {}
+    banned = common.banned_ids()
+    tr = {}
     for c in sorted(glob.glob(f"{DATA}/chunks/train-??")):
         mf = c + ".manifest"
         if not os.path.exists(mf): continue
@@ -132,9 +139,9 @@ def real_groups():
             j = jobs[m["line"]]
             sc = scenes.get(j["raf"])
             if sc is None: continue    # a scene since moved to val / test
-            g = (ho if sc["session"] in held else tr).setdefault(j["recipe_id"], (j["settings"], []))
-            g[1].append(common.load_render(m["jpeg"]))
-    return [g for g in tr.values() if len(g[1]) >= 2], list(ho.values()), held
+            if j["recipe_id"] in banned: continue
+            tr.setdefault(j["recipe_id"], (j["settings"], []))[1].append(common.load_render(m["jpeg"]))
+    return [g for g in tr.values() if len(g[1]) >= 2]
 
 
 def augment(img):
@@ -149,27 +156,40 @@ def augment(img):
 
 def loss_fn(out, cls_t, reg_t, mask):
     logits, reg = out
-    l = sum(F.cross_entropy(logits[k], cls_t[k]) for k in HEADS)
-    l = l + 3 * ((reg - reg_t).abs() * mask).sum() / mask.sum().clamp_min(1)
-    return l
+    l = sum(CE_W[k] * F.cross_entropy(logits[k], cls_t[k]) for k in HEADS)
+    w = torch.tensor(REG_W, device=reg.device)
+    return l + ((reg - reg_t).abs() * mask * w).sum(1).mean()
 
 
-def soft_vec(logits, reg):
-    """The network's answer as a differentiable recipe vector, in common.recipe_vec's layout."""
-    sm = {k: torch.softmax(v, -1) for k, v in logits.items()}
-    r = reg
-    return torch.cat([sm["film"], sm["wb"], r[:, :3], sm["dr"], r[:, 3:6], r[:, 6:8], sm["cc"], sm["fxb"], r[:, 8:9]], -1)
+def hard_vec(logits, reg):
+    """The answer the way it will be scored, as a recipe vector (common.recipe_vec's layout): the chosen film, mode and
+    so on, with gradients passed straight through the choice; settings the camera ignores for that choice are zero."""
+    def pick(k):
+        soft = torch.softmax(logits[k], -1)
+        hard = F.one_hot(soft.argmax(-1), soft.shape[-1]).float()
+        return hard + soft - soft.detach()
+    film, wb, dr, cc, fxb = pick("film"), pick("wb"), pick("dr"), pick("cc"), pick("fxb")
+    idx = logits["film"].argmax(-1)
+    mono = (idx >= FILMS.index("Acros")).float()[:, None]
+    tone = mono * (idx != FILMS.index("Sepia")).float()[:, None]
+    kel = (logits["wb"].argmax(-1) == WBS.index("Kelvin")).float()[:, None]
+    fxb = fxb * (1 - mono) + F.one_hot(torch.zeros_like(idx), len(EFF)).float() * mono
+    return torch.cat([film, wb, reg[:, :1] * kel, reg[:, 1:3], dr, reg[:, 3:5], reg[:, 5:6] * (1 - mono), reg[:, 6:8] * tone, cc, fxb, reg[:, 8:9]], -1)
 
 
 def look_loss(gen, logits, reg, truth_vecs):
-    """How different the proxy's picture is with the answer vs with the true recipe, on random train scenes."""
+    """ΔE-like (Lab L1) distance between the proxy's picture with the answer and with the true recipe, on random train
+    scenes. Proxy against proxy, so most of its own error cancels. A DR above 100 is only real on a DR400 shot."""
     n = len(truth_vecs)
-    I = torch.randint(0, len(gen.scenes), (n,), device=gen.dev)
+    i_dr = len(FILMS) + len(WBS) + 3
+    high = (truth_vecs[:, i_dr] < 0.5) | (logits["dr"].argmax(-1) != 0)
+    idx = [gen.rng.choice(gen.dr400) if h else gen.rng.randrange(len(gen.scenes)) for h in high.tolist()]
+    I = torch.tensor(idx, device=gen.dev)
     raw, sc = gen.R[I], gen.S[I]
     with torch.no_grad():
-        want = gen.model(raw, truth_vecs, sc)
-    got = gen.model(raw, soft_vec(logits, reg), sc)
-    return F.l1_loss(got, want)
+        want = rgb_to_lab(gen.model(raw, truth_vecs, sc).permute(0, 3, 1, 2))
+    got = rgb_to_lab(gen.model(raw, hard_vec(logits, reg), sc).permute(0, 3, 1, 2))
+    return (got - want).abs().sum(1).mean()
 
 
 def batch_real(groups, n, k=3, aug=True):
@@ -194,19 +214,21 @@ def truth_vecs_of(cls, reg, dev):
 
 def main():
     if sys.argv[1] != "train": sys.exit(__doc__)
-    groups, hold, held = real_groups()
-    random.seed(0); random.shuffle(groups)
-    print(f"{len(groups)} recipes to train on; held out: sessions {sorted(held)} ({sum(len(g[1]) for g in hold)} renders)", flush=True)
+    seed = int(arg("--seed", 0)); random.seed(seed); torch.manual_seed(seed); np.random.seed(seed)
+    groups = real_groups()
+    print(f"{len(groups)} recipes to train on, {sum(len(g[1]) for g in groups)} renders", flush=True)
     gen = None
     if arg("--proxy"):
         import synth
-        gen = synth.Generator(f"{DATA}/models/{arg('--proxy')}", dev, exclude_sessions=held, augment="--no-aug" not in sys.argv)
+        gen = synth.Generator(f"{DATA}/models/{arg('--proxy')}", dev, augment="--no-aug" not in sys.argv)
         for p in gen.model.parameters(): p.requires_grad_(False)
     look_w = float(arg("--look", 0))
     model = Encoder().to(dev)
     opt = torch.optim.AdamW(model.parameters(), 1e-3, weight_decay=1e-4)
     minutes = float(arg("--minutes", 20)); t0 = time.time(); end = t0 + 60 * minutes; step = 0
     out = f"{DATA}/models/{arg('--out', 'encoder.pt')}"
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    avg = None
     while time.time() < end:
         frac = (time.time() - t0) / (60 * minutes)
         for g in opt.param_groups: g["lr"] = 1e-3 * 0.5 * (1 + np.cos(np.pi * min(1, frac)))
@@ -215,22 +237,15 @@ def main():
             imgs, cls, reg, mask = gen.batch(24, k)
         else:
             imgs, cls, reg, mask = batch_real(groups, 24, k)
-        output = model(imgs)
-        loss = loss_fn(output, cls, reg, mask)
+        logits, r, chosen = model(imgs, wb=cls["wb"])
+        loss = loss_fn((logits, r), cls, reg, mask)
         if gen and look_w > 0:
-            loss = loss + look_w * look_loss(gen, output[0], output[1], truth_vecs_of(cls, reg, dev))
+            loss = loss + look_w * look_loss(gen, logits, chosen, truth_vecs_of(cls, reg, dev))
         opt.zero_grad(); loss.backward(); opt.step(); step += 1
-        if step % 500 == 0:
-            model.eval()
-            with torch.no_grad():
-                imgs, cls, reg, mask = batch_real(hold, 64, 3, aug=False)
-                logits, r = model(imgs)
-                film = (logits["film"].argmax(1) == cls["film"]).float().mean().item()
-                err = ((r - reg).abs() * mask).sum(0) / mask.sum(0).clamp_min(1)
-            model.train()
-            print(f"step {step} loss {loss.item():.3f} | held sessions: film {film:.2f} wbR {9 * err[1]:.1f} wbB {9 * err[2]:.1f} "
-                  f"H {2 * err[3]:.2f} S {2 * err[4]:.2f} col {4 * err[5]:.2f} ({(time.time() - t0) / 60:.0f} min)", flush=True)
-            os.makedirs(os.path.dirname(out), exist_ok=True); torch.save(model.state_dict(), out)
+        avg = loss.item() if avg is None else 0.98 * avg + 0.02 * loss.item()
+        if step % 1000 == 0:
+            print(f"step {step} loss {avg:.3f} ({(time.time() - t0) / 60:.0f} min)", flush=True)
+            torch.save(model.state_dict(), out)
     torch.save(model.state_dict(), out)
     print("saved", out)
 

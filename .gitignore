@@ -6,3 +6,4 @@ dist/
 # Mac app (XcodeGen)
 FujiRecipes.xcodeproj/
 build/
+research/look-model/__pycache__/

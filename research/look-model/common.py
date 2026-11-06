@@ -22,6 +22,12 @@ EFF = ["Off", "Weak", "Strong"]
 W, H = 160, 106          # working size (the 640 x 426 preview / 4)
 
 
+def banned_ids():
+    """Training recipes too close to a val / test recipe (jobs.py ban): never trained on."""
+    path = f"{DATA}/train-banned.json"
+    return set(json.load(open(path))) if os.path.exists(path) else set()
+
+
 def recipe_vec(s):
     v = []
     f = s["film"]

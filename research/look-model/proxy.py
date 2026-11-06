@@ -61,6 +61,7 @@ def dataset(manifests, jobs_files, only_train=True):
     meta = common.scene_meta()
     allowed = None if only_train is False else {x["raf"] for x in json.load(open(f"{DATA}/scenes.json")) if x["role"] == "train"}
     items = []
+    banned = common.banned_ids()
     for jf, mf in zip(jobs_files, manifests):
         if not os.path.exists(mf): continue
         jobs = [json.loads(l) for l in open(jf)]
@@ -69,6 +70,7 @@ def dataset(manifests, jobs_files, only_train=True):
             if not m.get("jpeg"): continue
             j = jobs[m["line"]]
             if allowed is not None and j["raf"] not in allowed: continue    # a scene since moved to val / test
+            if j.get("recipe_id") in banned: continue
             stem = os.path.splitext(os.path.basename(j["raf"]))[0]
             if not os.path.exists(f"{DATA}/raw/{stem}.tiff"): continue
             items.append((j["raf"], j["settings"], m["jpeg"]))
@@ -130,23 +132,24 @@ def main():
     model = Proxy().to(dev)
     opt = torch.optim.AdamW(model.parameters(), 2e-3, weight_decay=1e-4)
     minutes = float(arg("--minutes", 20)); end = time.time() + 60 * minutes
-    step, best = 0, 1e9
-    sched_total = None
+    step = 0
+    # scenes evenly, more or less: one scene has hundreds of times the renders of another
+    counts = torch.bincount(I, minlength=len(R)).float()
+    weights = 1 / counts[I].sqrt()
     while time.time() < end:
-        b = torch.randint(0, len(I), (24,))
+        b = torch.multinomial(weights, 24, replacement=True)
         pred = model(R[I[b].to(dev)], X[b], S[I[b].to(dev)])
         loss = F.l1_loss(pred, Y[b])
         frac = 1 - (end - time.time()) / (60 * minutes)
         for g in opt.param_groups: g["lr"] = 2e-3 * 0.5 * (1 + np.cos(np.pi * min(1, frac)))
         opt.zero_grad(); loss.backward(); opt.step(); step += 1
-        if step % 1000 == 0:
-            d, p = evaluate(model, va)
+        if step % 2000 == 0:
+            d, p = evaluate(model, va)     # only reported: the last weights are kept, val cases never choose a model
             print(f"step {step} loss {loss.item():.4f} val dE {d:.2f} p90 {p:.2f} ({(time.time() - t0) / 60:.0f} min)", flush=True)
-            if d < best:
-                best = d; os.makedirs(os.path.dirname(out), exist_ok=True); torch.save(model.state_dict(), out)
+            os.makedirs(os.path.dirname(out), exist_ok=True); torch.save(model.state_dict(), out)
     d, p = evaluate(model, va)
-    if d < best: torch.save(model.state_dict(), out); best = d
-    print(f"done: {step} steps, best val dE {best:.2f} -> {out}")
+    torch.save(model.state_dict(), out)
+    print(f"done: {step} steps, val dE {d:.2f} p90 {p:.2f} -> {out}")
 
 
 if __name__ == "__main__":
