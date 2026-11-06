@@ -21,7 +21,21 @@
 
 ## Results
 
-(none yet)
+Split v3, val (80 fixed cases; `results.tsv` has every run): neutral 7.29 / 0 matches, library's most common 6.87 / 1.
+
+### Limits of this benchmark
+
+- Val's owner scenes: 10 of 12 from one session, 9 of them daylight; 30 of 45 refs from that session. A val gain may be
+  a gain for that session only. Test (other sessions) is the check; the owner's new photos would widen both.
+- Training: session 19 holds 100 of the 106 DR400 train scenes, so DR200/400 is confounded with its scenes.
+- Runs differ by chance: encoder vs encoder + proxy looks on the old split was 0.24 ± 0.28.
+
+### A leak, found and fixed before any score on split v3
+
+Recipes 0–1999 were drawn before split v3, from a pool that then held today's val and test recipes: 3 val and 5 test
+library recipes were in training exactly, and 20 val / 20 test cases had a training recipe within 2 steps. 507 of 4,999
+recipes are now banned (`train-banned.json`, within 4 steps of any val / test recipe). The first split's numbers below
+may carry the same flaw.
 
 ### First split (train: 7 sessions, two of them 84% of its scenes; archived in scores-split2.jsonl)
 
@@ -34,6 +48,9 @@ large-scale tone and colour, not a global offset and not fine detail.
 
 ## Ideas not tried yet
 
-- Look loss: the encoder's soft recipe through the proxy against the true recipe's render (`encoder.py --look w`).
+- Posterior medoid instead of refinement through the encoder's embedding: candidates from top films × modes, pick the
+  one nearest the others through the proxy, probability-weighted.
+- Ensembles of encoders. Frozen DINOv2 features (knowing skin, sky or foliage separates cast from scene).
+- Attribution: score with the truth swapped in for WB, film or tone (`score.py --predictions`) to see what costs most.
 - A stronger proxy (wider, Lab / ΔE loss, per-scene tone stage). A pretrained image backbone for the encoder.
 - The owner's new photos: new sessions, especially DR400 ones.

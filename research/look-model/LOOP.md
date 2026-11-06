@@ -12,13 +12,15 @@ Like karpathy/autoresearch, with the lessons of its follow-ups (reviewer agents,
 ## What the loop may change
 
 `common.py` (features, not the recipe layout's meaning), `proxy.py`, `encoder.py`, `synth.py`, `refine.py`,
-`predict.py`, new files next to them, the training data jobs (`recipes.py train N` adds more; never edit cases).
+`predict.py`, new files next to them. Training data: the orchestrator alone runs `jobs.py` (it reads the frozen cases to
+stay away from them); nothing may train on a recipe in `train-banned.json`, and val cases never choose a checkpoint.
 
 ## The number
 
 `uv run research/look-model/score.py val --predict "<cmd>" --label "<what changed>"` →
 `dE … match … p90 …`. The loop's number is **val dE** (lower is better); p90 and match must not get worse by more
-than the noise. Noise: rerun the same predictor once per milestone; differences under 0.05 dE are noise.
+than the noise. Noise: `compare.py "<label a>" "<label b>"` gives the paired difference over the 80 fixed cases; a gain
+counts only when it's more than twice its standard error (about 0.5 dE), or holds across two seeds.
 
 ## Roles
 
