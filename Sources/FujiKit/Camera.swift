@@ -169,15 +169,24 @@ public actor FujiCamera {
     public func usbMode() async throws -> USBMode { USBMode(raw: try await getU16(0xD16E)) }
 
     /// Probes the selector: selecting n+1 is refused (0x200A). 7 on most bodies, 4 on X-S20 / X-M5 / X-S10, 6 on GFX100S.
+    /// Busy says nothing about the slots, so it's an error, and only a real count is remembered.
     public func bankCount() async throws -> Int {
         if let bankCountCache { return bankCountCache }
         guard let saved = try await getU16(BankProp.selector.rawValue) else {
             throw CameraError("This camera doesn't expose custom slots over USB. Set it to \(USBMode.rawConvBackupRestore.label) (X-T3, X-T30 and older bodies can't do this).")
         }
         var n = 0
-        for k in 1...8 { if try await setU16(BankProp.selector.rawValue, UInt16(k)) == PTPCode.ok { n = k } else { break } }
+        for k in 1...8 {
+            let r = try await setU16(BankProp.selector.rawValue, UInt16(k))
+            if r == PTPCode.busy {
+                _ = try? await setU16(BankProp.selector.rawValue, saved)
+                throw CameraError("The camera is busy: another program is using it. Try again in a few minutes.")
+            }
+            guard r == PTPCode.ok else { break }
+            n = k
+        }
         _ = try await setU16(BankProp.selector.rawValue, saved)
-        bankCountCache = n
+        if n > 0 { bankCountCache = n }
         return n
     }
 

@@ -324,7 +324,7 @@ final class Tools: @unchecked Sendable {
         var out: JSON = ["connected": true, "model": info.model, "firmware": info.firmware, "usbMode": mode.label,
                          "canReadWriteSlots": mode.canWriteSlots, "simulated": Cameras.shared.simulate]
         if mode.canWriteSlots {
-            out["slots"] = try await cam.bankCount()
+            do { out["slots"] = try await cam.bankCount() } catch { out["slotsError"] = "\(error)" }
             out["note"] = "The camera's menu is locked while it's connected in this mode. FS1–FS3 on the film simulation dial are written through the camera's settings file (fuji_plan_write slot \"FS1\"…\"FS3\"; WB shift and B&W toning stay as set on the camera). The dial overrides a C slot's film simulation unless it's set to C."
         } else {
             out["advice"] = "The camera is in \(mode.label) mode, where its custom slots can't be reached. \(USBMode.howToSet)"
@@ -474,7 +474,7 @@ final class Tools: @unchecked Sendable {
         func slotIndex(_ s: String) throws -> Int {
             let u = s.uppercased()
             if u.hasPrefix("FS"), let n = Int(u.dropFirst(2)), (1...max(1, dialSlots)).contains(n), dialSlots > 0 { return 100 + n }
-            guard let n = Int(u.dropFirst()), u.hasPrefix("C"), (1...count).contains(n) else {
+            guard let n = Int(u.dropFirst()), u.hasPrefix("C"), n >= 1, n <= count else {
                 throw ToolError("\(s) isn't a slot on the \(info.model) (C1…C\(count)\(dialSlots > 0 ? ", FS1…FS\(dialSlots)" : "")).")
             }
             return n

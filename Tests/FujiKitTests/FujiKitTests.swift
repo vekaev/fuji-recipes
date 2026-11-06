@@ -646,3 +646,64 @@ final class RawKeyTests: XCTestCase {
         XCTAssertNotEqual(RenderCache.rawKey(url), first)
     }
 }
+
+/// Answers only the slot selector, like a body with `slots` banks; `busyFrom` makes it refuse as busy from that slot on
+/// (1 = another program holds the camera from the start).
+private final class SelectorTransport: PTPTransport, @unchecked Sendable {
+    let displayName = "test"
+    let slots: Int
+    var busyFrom: Int?
+    var selector: UInt16 = 3
+
+    init(slots: Int = 7, busyFrom: Int? = nil) { self.slots = slots; self.busyFrom = busyFrom }
+
+    func send(_ op: UInt16, _ params: [UInt32], data: Data?) async throws -> PTPResult {
+        if op == PTPOp.getDevicePropValue { return PTPResult(code: PTPCode.ok, data: Data([UInt8(selector), 0])) }
+        let value = Int(data?.first ?? 0)
+        if value == Int(selector) { return PTPResult(code: PTPCode.ok) }    // putting the selector back
+        if let busyFrom, value >= busyFrom { return PTPResult(code: PTPCode.busy) }
+        guard value <= slots else { return PTPResult(code: PTPCode.notSupported) }
+        selector = UInt16(value)
+        return PTPResult(code: PTPCode.ok)
+    }
+}
+
+final class BankCountTests: XCTestCase {
+    func testCountsTheSlotsAndPutsTheSelectorBack() async throws {
+        let t = SelectorTransport()
+        let n = try await FujiCamera(transport: t).bankCount()
+        XCTAssertEqual(n, 7)
+        XCTAssertEqual(t.selector, 3)
+    }
+
+    func testABusyCameraIsAnErrorThatDoesNotStick() async throws {
+        let t = SelectorTransport(busyFrom: 1)
+        let cam = FujiCamera(transport: t)
+        do {
+            let n = try await cam.bankCount()
+            XCTFail("expected an error, got \(n) slots")
+        } catch {
+            XCTAssertTrue("\(error)".contains("busy"), "\(error)")
+        }
+        t.busyFrom = nil
+        let n = try await cam.bankCount()
+        XCTAssertEqual(n, 7)
+    }
+
+    func testBusyHalfwayDoesNotCountTooFew() async throws {
+        let t = SelectorTransport(busyFrom: 4)
+        let cam = FujiCamera(transport: t)
+        do {
+            let n = try await cam.bankCount()
+            XCTFail("expected an error, got \(n) slots")
+        } catch {}
+        t.busyFrom = nil
+        let n = try await cam.bankCount()
+        XCTAssertEqual(n, 7)
+    }
+
+    func testABodyWithoutSlotsCountsZero() async throws {
+        let n = try await FujiCamera(transport: SelectorTransport(slots: 0)).bankCount()
+        XCTAssertEqual(n, 0)
+    }
+}
