@@ -67,6 +67,12 @@ final class AppModel {
         didSet { UserDefaults.standard.set(syncSlots, forKey: "syncSlots") }
     }
     var syncingSlots = false
+    /// Library-wide choices (`preferences.json` in the library, shared with the iPhone and the `fuji` tool).
+    private(set) var preferences = Preferences()
+    /// Clarity other than 0 makes the camera stop 1–3 s after every shot to store it. Off (the default): slots get
+    /// Clarity 0 and Studio renders use 0; recipes keep their value. Turning it on asks first (`confirmClarity`).
+    var clarityOn: Bool { preferences.clarity }
+    var confirmClarity = false
     var toastAction: ToastAction?
     /// Runs when a sheet closes without its own button (Esc, a click outside, a swipe down): the recipe page saves.
     var sheetWillClose: (() -> Void)?
@@ -102,7 +108,9 @@ final class AppModel {
         let lib = Library(root: root)
         let seeds: [(String, String, Int, String)] = [("UI Chrome", "Classic Chrome", 2, "favorite"), ("UI Acros", "Acros+R", 0, "to-try"), ("UI Neg", "Classic Neg.", 4, "to-try")]
         for (name, film, color, status) in seeds {
-            var s = RecipeSettings(); s.film = film; s.color = color; s.normalize()
+            var s = RecipeSettings(); s.film = film; s.color = color
+            if name == "UI Neg" { s.clarity = -2 }   // Clarity off by default: written as 0 (testClaritySwitch)
+            s.normalize()
             var r = Recipe(slug: "", name: name, status: status, settings: s); r.tags = film.hasPrefix("Acros") ? ["B&W"] : ["Warm"]
             if let saved = try? lib.save(r, allowDuplicate: true) {
                 let dir = root.appendingPathComponent("samples/\(saved.slug)")
@@ -173,6 +181,7 @@ final class AppModel {
     }
 
     func reload() {
+        preferences = library.preferences
         recipes = ((try? library.recipes()) ?? []).sorted { a, b in
             (a.lastShot ?? "", a.shots ?? 0, b.name) > (b.lastShot ?? "", b.shots ?? 0, a.name)
         }
@@ -342,14 +351,16 @@ final class AppModel {
             return "\(slot) refused \(f.field)"
         }
     }
-    func slotsHolding(_ r: Recipe) -> [String] { slots.filter { $0.cam == r.settings }.map(\.id) }
+    func slotsHolding(_ r: Recipe) -> [String] { slots.filter { $0.cam == r.settings || $0.cam == r.settings.forCamera(preferences) }.map(\.id) }
+    /// What the camera shoots for a recipe now (Clarity 0 while it's off): Studio renders use this.
+    func shot(_ r: Recipe) -> RecipeSettings { r.settings.forCamera(preferences) }
 
     /// "In C1 and FS1 · 39 of your photos · last used 11 Jul"
     func whereabouts(_ r: Recipe) -> String {
         var parts: [String] = []
         let held = slotsHolding(r)
         if !held.isEmpty { parts.append("in " + held.joined(separator: ", ")) }
-        else if let staged = slots.first(where: { $0.changed && $0.draft == r.settings }) { parts.append("→ \(staged.id)") }
+        else if let staged = slots.first(where: { $0.changed && $0.draft == shot(r) }) { parts.append("→ \(staged.id)") }
         if let n = r.shots, n > 0 { parts.append("\(n) of your photos") }
         if let last = r.lastShot { parts.append("last used \(Self.short(last))") }
         if parts.isEmpty { parts.append(r.status == "to-try" ? "to try" : r.status) }
@@ -433,7 +444,7 @@ final class AppModel {
 
     func studioRender(_ r: Recipe) -> URL? {
         guard let raw = studioRaw else { return nil }
-        return RenderCache(library: library).cached(raw: raw, settings: r.settings)
+        return RenderCache(library: library).cached(raw: raw, settings: shot(r))
     }
 
     /// Renders every chosen recipe that isn't cached yet, one at a time, on the connected camera.
@@ -460,8 +471,8 @@ final class AppModel {
                 for (i, r) in todo.enumerated() {
                     if Task.isCancelled { break }
                     self.busy = "Rendering \(i + 1) of \(todo.count) · \(r.name)"
-                    let made = try await cam.render(r.settings, base: self.studioBase!)
-                    try cache.store(made.jpeg, raw: raw, settings: r.settings)
+                    let made = try await cam.render(self.shot(r), base: self.studioBase!)
+                    try cache.store(made.jpeg, raw: raw, settings: self.shot(r))
                     if !made.notes.isEmpty { self.studioNotes[r.slug] = made.notes }
                     self.studioProgress = (i + 1, todo.count)
                     self.studioVersion += 1
@@ -491,7 +502,7 @@ final class AppModel {
 
     func studioFull(_ slug: String) -> URL? {
         guard let raw = studioRaw, let r = recipes.first(where: { $0.slug == slug }) else { return nil }
-        return RenderCache(library: library).cached(raw: raw, settings: r.settings, full: true)
+        return RenderCache(library: library).cached(raw: raw, settings: shot(r), full: true)
     }
 
     func loadStudioFull(_ slug: String?) {
@@ -510,8 +521,8 @@ final class AppModel {
             do {
                 guard let cam = await Cameras.shared.current() else { return }
                 if self.studioBase == nil { self.studioBase = try await cam.uploadRAF(try Data(contentsOf: raw)) }
-                let made = try await cam.render(r.settings, base: self.studioBase!, full: true, timeout: 90)
-                try RenderCache(library: self.library).store(Self.shrunk(made.jpeg, to: 3000), raw: raw, settings: r.settings, full: true)
+                let made = try await cam.render(self.shot(r), base: self.studioBase!, full: true, timeout: 90)
+                try RenderCache(library: self.library).store(Self.shrunk(made.jpeg, to: 3000), raw: raw, settings: self.shot(r), full: true)
                 self.studioVersion += 1
             } catch {
                 self.say("Couldn't develop \(r.name) at full size: \(error)")
@@ -529,15 +540,15 @@ final class AppModel {
 
     func studioSharp(_ slug: String) -> URL? {
         guard let raw = studioRaw, let r = recipes.first(where: { $0.slug == slug }) else { return nil }
-        let u = sharpURL(raw: raw, settings: r.settings)
+        let u = sharpURL(raw: raw, settings: shot(r))
         return FileManager.default.fileExists(atPath: u.path) ? u : nil
     }
 
     /// The best picture of a recipe for a card: the camera's full size if it has been made, else the sharp one.
     func studioBetter(_ r: Recipe) -> String? {
         guard let raw = studioRaw else { return nil }
-        if let full = RenderCache(library: library).cached(raw: raw, settings: r.settings, full: true) { return full.path }
-        let u = sharpURL(raw: raw, settings: r.settings)
+        if let full = RenderCache(library: library).cached(raw: raw, settings: shot(r), full: true) { return full.path }
+        let u = sharpURL(raw: raw, settings: shot(r))
         return FileManager.default.fileExists(atPath: u.path) ? u.path : nil
     }
 
@@ -549,7 +560,7 @@ final class AppModel {
     /// Asks for one render's sharp version. One at a time, latest asked first, so the cards on screen and the photo
     /// opened big come before cards scrolled past.
     func wantSharp(_ r: Recipe) {
-        guard let raw = studioRaw, studioRender(r) != nil, !FileManager.default.fileExists(atPath: sharpURL(raw: raw, settings: r.settings).path) else { return }
+        guard let raw = studioRaw, studioRender(r) != nil, !FileManager.default.fileExists(atPath: sharpURL(raw: raw, settings: shot(r)).path) else { return }
         sharpWanted.removeAll { $0.slug == r.slug }
         sharpWanted.insert(r, at: 0)
         guard !sharpWorking else { return }
@@ -562,7 +573,7 @@ final class AppModel {
         while !sharpWanted.isEmpty {
             let r = sharpWanted.removeFirst()
             guard let raw = studioRaw, let render = studioRender(r) else { continue }
-            let out = sharpURL(raw: raw, settings: r.settings)
+            let out = sharpURL(raw: raw, settings: shot(r))
             if FileManager.default.fileExists(atPath: out.path) { continue }
             if studioDetail?.raw != raw {
                 pruneSharp(keeping: out.deletingLastPathComponent())
@@ -819,16 +830,45 @@ final class AppModel {
         }
     }
 
+    /// The Clarity switch. Turning it on goes through `confirmClarity` (it slows every shot); either way the slots
+    /// follow: off puts every slot's Clarity at 0, on gives slots holding a recipe that recipe's Clarity back.
+    func setClarity(_ on: Bool) {
+        guard on != preferences.clarity else { return }
+        var p = preferences; p.clarity = on
+        do { try library.setPreferences(p) } catch { say("Couldn't save the setting: \(error.localizedDescription)"); return }
+        preferences = p
+        var touched: [String] = []
+        for s in slots {
+            let want = on ? (matchOnCamera(s.draft, dial: s.dial)?.recipe.settings.clarity ?? s.draft.clarity) : 0
+            if want != s.draft.clarity { update(s.id) { $0.draft.clarity = want }; touched.append(s.id) }
+        }
+        let list = touched.joined(separator: ", ")
+        let message = on
+            ? (touched.isEmpty ? "Clarity on · shots take 1–3 s longer to store when a recipe uses it"
+                               : "Clarity on · \(list) get their recipe's Clarity back · those shots take 1–3 s longer to store")
+            : (touched.isEmpty ? "Clarity off · shots save without waiting" : "Clarity off · \(list) set to 0 · shots save without waiting")
+        guard !touched.isEmpty, !askBeforeWriting, connected else {
+            say(touched.isEmpty || !connected ? message : message + " · review to write")
+            return
+        }
+        // Instant mode: write now and say what happened after the write's own message.
+        writeTask?.cancel()
+        writeTask = Task { [weak self] in
+            await self?.writeChanges()
+            self?.say(message)
+        }
+    }
+
     /// Stage a recipe in a slot (drag onto it, or pick it). Nothing reaches the camera until Review & write.
     func put(_ r: Recipe, in slotID: String) {
         guard slots.contains(where: { $0.id == slotID }) else { return }
-        update(slotID) { $0.draft = r.settings; $0.name = PTPString.bankName(r.name.uppercased()) }
+        update(slotID) { $0.draft = r.settings.forCamera(preferences); $0.name = PTPString.bankName(r.name.uppercased()) }
         selectedSlot = slotID
         if askBeforeWriting { say("\(r.name) → \(slotID) · not on the camera yet") } else { scheduleWrite(after: 0) }
     }
 
     func putBack(_ rec: SlotRecord) {
-        update(rec.slot) { $0.draft = rec.settings; $0.name = rec.name }
+        update(rec.slot) { $0.draft = rec.settings.forCamera(preferences); $0.name = rec.name }
         if askBeforeWriting { say("\(rec.name.isEmpty ? rec.settings.film : rec.name) staged for \(rec.slot) · review to write") }
         else { scheduleWrite(after: 0) }
     }
@@ -988,3 +1028,28 @@ final class AppModel {
     }
 }
 
+
+extension AppModel {
+    /// For every Clarity switch: off right away, on only after `confirmClarity` (it slows every shot).
+    var clarityBinding: Binding<Bool> {
+        Binding(get: { self.clarityOn }, set: { on in if on { self.confirmClarity = true } else { self.setClarity(false) } })
+    }
+}
+
+extension View {
+    /// "Turn on Clarity?": the cost first, then Yes / No. Attached once at the root (Mac, iPhone, iPad).
+    func clarityConfirmation() -> some View { modifier(ClarityConfirmation()) }
+}
+
+private struct ClarityConfirmation: ViewModifier {
+    @Environment(AppModel.self) private var model
+    func body(content: Content) -> some View {
+        @Bindable var model = model
+        content.alert("Turn on Clarity?", isPresented: $model.confirmClarity) {
+            Button("Yes, Turn On") { model.setClarity(true) }
+            Button("No", role: .cancel) {}
+        } message: {
+            Text("\(Preferences.clarityCost) Slots holding a recipe that uses it get its Clarity back.")
+        }
+    }
+}

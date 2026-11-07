@@ -47,7 +47,7 @@ app reads the same folder, so keep the field names and value spellings exactly a
 | `color` | −4 … +4; `null` for monochrome films |
 | `mono_warm_cool`, `mono_magenta_green` | −9 … +9 for Acros / Monochrome / Sepia; `null` for colour films |
 | `sharpness`, `high_iso_nr` | −4 … +4 |
-| `clarity` | −5 … +5 |
+| `clarity` | −5 … +5 (store the creator's value; while the library's Clarity preference is off, the default, the camera gets 0, because any other value makes every shot wait 1–3 s to be stored) |
 | `status` | `mine` (shot with it, found in EXIF), `to-try`, `tried`, `favorite`, `rejected` |
 
 Not stored in a camera slot, so they live in `shooting`: ISO, exposure compensation, lens or filter advice.

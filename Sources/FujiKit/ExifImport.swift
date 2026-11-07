@@ -117,7 +117,7 @@ public enum ExifImport {
             let step = Swift.max(1, g.files.count / 6)
             let samples = Array(stride(from: 0, to: g.files.count, by: step).map { g.files[$0] }.prefix(6))
             var r: Recipe
-            if let existing = library.match(g.settings) {
+            if let existing = library.match(g.settings, clarityOff: true) {
                 r = existing
                 if r.status == "to-try" || r.status == "tried" { r.status = "mine" }
                 report.append("updated \(r.slug) (\(g.files.count) shots)")

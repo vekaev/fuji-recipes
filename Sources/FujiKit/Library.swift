@@ -55,6 +55,18 @@ public struct Library: Sendable {
     var kitsDir: URL { root.appendingPathComponent("kits") }
     var backupsDir: URL { root.appendingPathComponent("backups") }
     public var indexFile: URL { root.appendingPathComponent("library.md") }
+    var preferencesFile: URL { root.appendingPathComponent("preferences.json") }
+
+    /// Choices shared by the app (Mac, iPhone, iPad), the `fuji` CLI and its MCP server: they live in the library
+    /// folder, so iCloud carries them to every device.
+    public var preferences: Preferences {
+        (try? Data(contentsOf: preferencesFile)).flatMap { try? JSONDecoder().decode(Preferences.self, from: $0) } ?? Preferences()
+    }
+
+    public func setPreferences(_ p: Preferences) throws {
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Library.encoder.encode(p).write(to: preferencesFile, options: .atomic)
+    }
 
     public static let encoder: JSONEncoder = {
         let e = JSONEncoder()
@@ -97,6 +109,16 @@ public struct Library: Sendable {
     public func match(_ settings: RecipeSettings) -> Recipe? {
         var s = settings; s.normalize()
         return (try? recipes())?.first { var t = $0.settings; t.normalize(); return t == s }
+    }
+
+    /// The recipe with these settings, also when Clarity was left out (0) because it slows saving: photos shot with a
+    /// recipe while Clarity was off still belong to it.
+    public func match(_ settings: RecipeSettings, clarityOff: Bool) -> Recipe? {
+        if let r = match(settings) { return r }
+        guard clarityOff else { return nil }
+        var s = settings; s.normalize()
+        guard s.clarity == 0 else { return nil }
+        return (try? recipes())?.first { var t = $0.settings; t.normalize(); t.clarity = 0; return t == s }
     }
 
     /// The recipe a slot holds, allowing the differences the camera imposes (see `cameraLimitedDifferences`):

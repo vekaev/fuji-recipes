@@ -707,3 +707,40 @@ final class BankCountTests: XCTestCase {
         XCTAssertEqual(n, 0)
     }
 }
+
+/// Clarity off (the default): nothing reaches the camera with Clarity, and a slot or photo with Clarity 0 still
+/// belongs to its recipe.
+final class ClarityPreferenceTests: XCTestCase {
+    func temp() -> Library { Library(root: FileManager.default.temporaryDirectory.appendingPathComponent("fuji-clarity-\(UUID().uuidString)")) }
+
+    func testOffByDefaultAndSaved() throws {
+        let lib = temp()
+        XCTAssertFalse(lib.preferences.clarity)
+        try lib.setPreferences(Preferences(clarity: true))
+        XCTAssertTrue(Library(root: lib.root).preferences.clarity)
+        try Data("{}".utf8).write(to: lib.root.appendingPathComponent("preferences.json"))   // an older file without the key
+        XCTAssertFalse(lib.preferences.clarity)
+    }
+
+    func testForCameraZeroesClarityOnlyWhenOff() {
+        var s = RecipeSettings(); s.clarity = -3
+        XCTAssertEqual(s.forCamera(Preferences()).clarity, 0)
+        XCTAssertEqual(s.forCamera(Preferences(clarity: true)).clarity, -3)
+        var t = s; t.clarity = 0
+        XCTAssertEqual(s.forCamera(Preferences()), t, "nothing else changes")
+    }
+
+    func testSlotWithClarityZeroStillMatchesItsRecipe() throws {
+        let lib = temp()
+        var s = RecipeSettings(); s.film = "Classic Neg."; s.clarity = -3; s.normalize()
+        try lib.save(Recipe(slug: "", name: "Soft Ember", settings: s))
+        var onCamera = s; onCamera.clarity = 0
+        let m = try XCTUnwrap(lib.matchOnCamera(onCamera))
+        XCTAssertEqual(m.recipe.name, "Soft Ember")
+        XCTAssertTrue(m.notes.contains { $0.hasPrefix("Clarity 0 on the camera") })
+        XCTAssertEqual(lib.match(onCamera, clarityOff: true)?.name, "Soft Ember", "photos shot while it was off")
+        XCTAssertNil(lib.match(onCamera, clarityOff: false))
+        var other = s; other.clarity = 2                       // a different non-zero Clarity is a different look
+        XCTAssertNil(lib.matchOnCamera(other))
+    }
+}

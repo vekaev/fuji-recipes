@@ -46,6 +46,10 @@ by how it looks, not by its numbers, so the photos come first and the settings s
   When you plug the camera in, any recipe on it that your library doesn't have yet is added as yours, named after the
   slot, with the photos you shot with it (on the Mac: your Fujifilm JPEGs and any memory card that's in; insert the
   card later and the photos join then). Undo is in the message; the setting is in the ⋯ menu.
+- **Clarity, off by default**: any Clarity other than 0 makes the camera stop for 1–3 seconds after every shot to
+  store it ("Storing"). So slots are written, and Studio renders made, with Clarity 0. Each recipe keeps its own
+  Clarity: turn on "Clarity (slower saving)" (Settings, ⋯, Camera menu, the camera page's switches, or "Turn on…"
+  under the Clarity dial). It asks first, then gives slots holding a recipe that uses it their Clarity back.
 - **Studio**: pick one of your RAW photos and see it developed by your camera with each recipe, side by side, the way
   FUJIFILM X RAW Studio does it (the camera does the work, so it's the real look). It starts by itself when the camera
   is connected, in big cards across the whole window; arrows move, Space opens one big (developed again at full size;
@@ -144,6 +148,7 @@ Any other MCP client: run `fuji mcp`.
 | `fuji_import_photos` | recipes from your Fujifilm JPEGs' EXIF (needs `brew install exiftool`) |
 | `fuji_sync_slots` | the camera's recipes your library doesn't have, added with the photos you shot with them |
 | `fuji_backup` | snapshot every slot into the library |
+| `fuji_preferences` | library-wide choices shared with the app: `clarity` (off by default: slots and renders get Clarity 0, because Clarity makes every shot wait 1–3 s to be stored) |
 | `fuji_plan_write` → `fuji_apply_write` | camera writes: a preview of every change first; apply only after you approve. Apply backs up all slots, writes only what differs in the camera's order, reads each slot back and reports anything refused |
 
 Reads change nothing. Restore any backup with `fuji_plan_write {"operations": [{"restore": "latest"}]}`.

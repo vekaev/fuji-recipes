@@ -70,7 +70,15 @@ struct SlotEditor: View {
                         group("Detail")
                         dial("Sharpness", "sharpness", value: Double(s.draft.sharpness), range: -4...4, step: 1, major: 2) { v in model.update { $0.draft.sharpness = Int(v) } }
                         dial("High ISO NR", "highIsoNr", value: Double(s.draft.highIsoNr), range: -4...4, step: 1, major: 2) { v in model.update { $0.draft.highIsoNr = Int(v) } }
-                        dial("Clarity", "clarity", value: Double(s.draft.clarity), range: -5...5, step: 1, major: 5) { v in model.update { $0.draft.clarity = Int(v) } }
+                        dial("Clarity", "clarity", value: Double(s.draft.clarity), range: -5...5, step: 1, major: 5, off: !model.clarityOn) { v in model.update { $0.draft.clarity = Int(v) } }
+                        if !model.clarityOn {
+                            HStack(spacing: 6) {
+                                Text("Off, so shots save without waiting").font(.system(size: 11.5)).foregroundStyle(.secondary)
+                                Button("Turn on…") { model.confirmClarity = true }.buttonStyle(.plain).pointer()
+                                    .font(.system(size: 11.5, weight: .medium)).foregroundStyle(Theme.ink)
+                                    .accessibilityIdentifier("slot.clarityOn")
+                            }
+                        }
 
                         Text("Drag a dial (⌥ for finer) · double-click resets · a dot marks what differs from the camera. DR400 needs ISO 640+ on the X-E5. ISO and exposure aren't stored in a slot.")
                             .font(.system(size: 11)).foregroundStyle(.tertiary).padding(.top, 12)

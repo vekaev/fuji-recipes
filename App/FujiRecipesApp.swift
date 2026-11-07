@@ -35,6 +35,7 @@ struct FujiRecipesApp: App {
                 Button("Settings of This Slot") { model.openSlot(model.selectedSlot, editing: true) }.keyboardShortcut("e", modifiers: [])
                     .disabled(!model.connected || model.slot == nil)
                 Toggle("Ask Before Writing", isOn: $model.askBeforeWriting)
+                Toggle("Clarity (Slower Saving)", isOn: model.clarityBinding)
                 Button("Add the Camera's Recipes to the Library") { model.syncSlotsToLibrary() }.disabled(!model.connected || model.syncingSlots)
                 Toggle("Add Them When the Camera Connects", isOn: $model.syncSlots)
                 Button("Review Changes…") { model.sheet = .review }.keyboardShortcut(.return, modifiers: .command)
@@ -58,6 +59,7 @@ struct FujiRecipesApp: App {
                     Toggle("Ask before writing to the camera", isOn: $model.askBeforeWriting)
                 Text("Off: a recipe you put in a slot is written right away. Each write saves that slot first, reads it back, and the message offers Undo.")
                     .font(.caption).foregroundStyle(.secondary)
+                ClaritySetting(model: model)
                 Picker("Appearance", selection: $appearance) {
                     ForEach(AppAppearance.allCases) { Text($0.label).tag($0) }
                 }
@@ -70,5 +72,20 @@ struct FujiRecipesApp: App {
             .formStyle(.grouped)
             .frame(width: 480)
         }
+    }
+}
+
+/// Settings ▸ Clarity: its own Yes / No, because this window isn't the one the main alert is attached to.
+private struct ClaritySetting: View {
+    let model: AppModel
+    @State private var asking = false
+    var body: some View {
+        Toggle("Clarity (slower saving)", isOn: Binding(get: { model.clarityOn }, set: { on in if on { asking = true } else { model.setClarity(false) } }))
+            .alert("Turn on Clarity?", isPresented: $asking) {
+                Button("Yes, Turn On") { model.setClarity(true) }
+                Button("No", role: .cancel) {}
+            } message: { Text("\(Preferences.clarityCost) Slots holding a recipe that uses it get its Clarity back.") }
+        Text("Off: slots and Studio renders get Clarity 0, so the camera doesn't stop to store each shot. Recipes keep their own Clarity for when it's on.")
+            .font(.caption).foregroundStyle(.secondary)
     }
 }

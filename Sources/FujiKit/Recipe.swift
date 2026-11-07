@@ -161,6 +161,11 @@ public struct RecipeSettings: Codable, Equatable, Hashable, Sendable {
             notes.append("toning WC \(b.monoWarmCool ?? 0) MG \(b.monoMagentaGreen ?? 0) on the camera (the recipe has WC \(a.monoWarmCool ?? 0) MG \(a.monoMagentaGreen ?? 0))")
             b.monoWarmCool = a.monoWarmCool; b.monoMagentaGreen = a.monoMagentaGreen
         }
+        // Clarity left at 0 on the camera: it makes every shot wait 1–3 s for "Storing" (`Preferences.clarity`).
+        if a.clarity != 0, b.clarity == 0 {
+            notes.append("Clarity 0 on the camera (the recipe has \(signed(a.clarity)); off, so shots save without waiting)")
+            b.clarity = a.clarity
+        }
         // FS1–FS3: the WB shift isn't written there yet (offsets unmapped), so the camera keeps its own.
         if dial, a.wbRed != b.wbRed || a.wbBlue != b.wbBlue {
             notes.append("WB shift R\(b.wbRed) B\(b.wbBlue) on the camera (the recipe has R\(a.wbRed) B\(a.wbBlue); FS positions keep their own for now)")
@@ -285,5 +290,28 @@ public struct Recipe: Codable, Equatable, Sendable {
         let folded = text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .init(identifier: "en_US"))
         let parts = folded.lowercased().split(whereSeparator: { !($0.isLetter || $0.isNumber) || !$0.isASCII })
         return parts.joined(separator: "-").prefix(60).trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    }
+}
+
+/// Library-wide choices (`Library.preferences`, `preferences.json` in the library folder).
+public struct Preferences: Codable, Sendable, Equatable {
+    /// Clarity other than 0 makes the camera stop for 1–3 s after every shot to store it ("Storing"). Off (the default):
+    /// slots are written and photos rendered with Clarity 0. Each recipe keeps its own value, used again once it's on.
+    public var clarity = false
+    public init(clarity: Bool = false) { self.clarity = clarity }
+    public init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        clarity = try c.decodeIfPresent(Bool.self, forKey: .clarity) ?? false
+    }
+    /// Shown wherever Clarity is offered: what turning it on costs.
+    public static let clarityCost = "Clarity other than 0 makes the camera stop for 1–3 seconds after every shot to store it."
+}
+
+extension RecipeSettings {
+    /// What goes to the camera (slots, renders): Clarity 0 unless the owner allows it.
+    public func forCamera(_ p: Preferences) -> RecipeSettings {
+        var s = self
+        if !p.clarity { s.clarity = 0 }
+        return s
     }
 }

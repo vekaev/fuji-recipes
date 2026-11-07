@@ -118,6 +118,8 @@ final class Tools: @unchecked Sendable {
                                                           "status": ["type": "string", "enum": Values.status], "creator": ["type": "string"], "url": ["type": "string"]],
                          "required": ["recipe"]],
          "annotations": ["readOnlyHint": false, "destructiveHint": false]],
+        ["name": "fuji_preferences", "description": "Library-wide choices shared with the app. clarity (default false): Clarity other than 0 makes the camera stop 1–3 s after every shot to store it, so while it's false every slot is written and every fuji_render made with Clarity 0 (recipes keep their own value). Pass clarity to change it, only when the user asks; it doesn't touch the camera: plan a write of the slots afterwards so they follow.",
+         "inputSchema": ["type": "object", "properties": ["clarity": ["type": "boolean"]]], "annotations": ["readOnlyHint": false, "destructiveHint": false]],
         ["name": "fuji_plan_write", "description": """
          Prepare writing recipes to the camera's custom slots WITHOUT writing; returns a plan id and a preview of every change (slot, old → new, field by field) to show the user. Operations:
          • {slot: "C3" or "FS1"…"FS3", recipe: "<slug or name>", name?: "<slot name, ≤25 ASCII, C slots only>"} — a library recipe into a slot (FS1–FS3: the film simulation dial, X-E5)
@@ -231,6 +233,14 @@ final class Tools: @unchecked Sendable {
                 if key == "creator" { r.source?.creator = v.isEmpty ? nil : v } else { r.source?.url = v.isEmpty ? nil : v }
             }
             return plain(try library.save(r, allowDuplicate: true))
+        case "fuji_preferences":
+            var p = library.preferences
+            if let v = a["clarity"] as? Bool { p.clarity = v; try library.setPreferences(p) }
+            let using = (try library.recipes()).filter { $0.settings.clarity != 0 }.map(\.slug)
+            return ["clarity": p.clarity,
+                    "note": p.clarity ? "Clarity is on: slots get each recipe's own Clarity. \(Preferences.clarityCost)"
+                                      : "Clarity is off: slots are written and photos rendered with Clarity 0, so the camera doesn't stop to store each shot. Recipes keep their value.",
+                    "recipesWithClarity": using] as JSON
         case "fuji_plan_write": return try await planWrite(a["operations"] as? [JSON] ?? [])
         case "fuji_apply_write": return try await applyWrite(str(a, "planId"))
         default: throw ToolError("Unknown tool \(name).")
@@ -248,14 +258,16 @@ final class Tools: @unchecked Sendable {
         var out: [JSON] = []
         var base: ConversionProfile?
         var cam: FujiCamera?
+        let prefs = library.preferences
         for r in chosen {
-            if let hit = cache.cached(raw: raw, settings: r.settings, full: full) {
+            let settings = r.settings.forCamera(prefs)   // what the camera would shoot: Clarity 0 while it's off
+            if let hit = cache.cached(raw: raw, settings: settings, full: full) {
                 out.append(["recipe": r.slug, "name": r.name, "jpeg": hit.path, "cached": true]); continue
             }
             if cam == nil { cam = try await Cameras.shared.require() }
             if base == nil { base = try await cam!.uploadRAF(try Data(contentsOf: raw)) }
-            let made = try await cam!.render(r.settings, base: base!, full: full)
-            let u = try cache.store(made.jpeg, raw: raw, settings: r.settings, full: full)
+            let made = try await cam!.render(settings, base: base!, full: full)
+            let u = try cache.store(made.jpeg, raw: raw, settings: settings, full: full)
             out.append(["recipe": r.slug, "name": r.name, "jpeg": u.path, "seconds": (made.seconds * 10).rounded() / 10, "notes": made.notes])
         }
         return ["raw": raw.path, "renders": out] as JSON
@@ -506,7 +518,19 @@ final class Tools: @unchecked Sendable {
                 } else { throw ToolError("\(slot): give a recipe or settings") }
             } else { throw ToolError("Each operation needs slot, kit or restore.") }
         }
+        // Clarity off (the default): nothing reaches the camera with Clarity, it makes every shot wait to be stored.
         var preview: [String] = []
+        if !library.preferences.clarity {
+            var held: [String] = []
+            for i in writes.indices where writes[i].settings.clarity != 0 {
+                let c = writes[i].settings.clarity
+                held.append("\(writes[i].slot > 100 ? "FS\(writes[i].slot - 100)" : "C\(writes[i].slot)") (\(writes[i].label) has \(c > 0 ? "+" : "−")\(abs(c)))")
+                writes[i].settings.clarity = 0
+            }
+            if !held.isEmpty {
+                preview.append("Clarity stays 0 in \(held.joined(separator: ", ")): it makes the camera stop 1–3 s to store every shot. fuji_preferences {clarity: true} allows it.")
+            }
+        }
         var dialNow: [SettingsFile.DialSlot]?
         for w in writes where w.slot > 100 {
             if dialNow == nil { dialNow = SettingsFile.dialSlots(try await cam.downloadSettingsBackup(), model: info.model) }

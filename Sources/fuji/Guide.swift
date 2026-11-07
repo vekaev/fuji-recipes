@@ -13,6 +13,7 @@ enum Guide {
     • highlight, shadow −2…+4 in 0.5 steps
     • color −4…+4 (null for monochrome films) · mono_warm_cool, mono_magenta_green −9…+9 (monochrome films only)
     • sharpness −4…+4 · high_iso_nr −4…+4 · clarity −5…+5
+      Clarity other than 0 makes the camera stop 1–3 s after every shot ("Storing"); while fuji_preferences clarity is false (the default) slots and renders get Clarity 0, recipes keep their value
     Not stored in a slot (keep them in the recipe's shooting advice): ISO, exposure compensation, lens, filters.
 
     Camera rules

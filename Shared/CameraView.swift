@@ -62,6 +62,10 @@ private struct SlotList: View {
                 Toggle("Ask before writing", isOn: Binding(get: { model.askBeforeWriting }, set: { model.askBeforeWriting = $0 }))
                     .toggleStyle(.switch).controlSize(.mini).font(.system(size: 12)).foregroundStyle(.secondary)
                     .padding(.top, 14).padding(.horizontal, 6)
+                Toggle("Clarity (slower saving)", isOn: model.clarityBinding)
+                    .toggleStyle(.switch).controlSize(.mini).font(.system(size: 12)).foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .accessibilityIdentifier("camera.clarity")
                 // Camera → library: recipes on the camera that the library doesn't have, with the photos shot with them.
                 Toggle("Add the camera's recipes to my library", isOn: Binding(get: { model.syncSlots }, set: { model.syncSlots = $0 }))
                     .toggleStyle(.switch).controlSize(.mini).font(.system(size: 12)).foregroundStyle(.secondary)

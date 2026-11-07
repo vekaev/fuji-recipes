@@ -123,6 +123,44 @@ final class FujiRecipesUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Green Acros"].exists)
     }
 
+    /// Clarity (slows saving): off by default, so UI Neg (Clarity −2) goes to C3 with 0. Turning it on asks first
+    /// ("No" keeps it off); "Yes" gives C3 its −2 back, and off sets it to 0 again.
+    func testClaritySwitch() {
+        tab(1)
+        let c3 = app.buttons["slot.C3"]
+        XCTAssertTrue(c3.waitForExistence(timeout: 15))
+        // The list redraws once the simulated camera has connected; tap after it settles.
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Provia defaults'")).firstMatch.waitForExistence(timeout: 15))
+        c3.tap()
+        let pick = app.buttons.containing(NSPredicate(format: "label CONTAINS 'UI Neg'")).firstMatch
+        XCTAssertTrue(pick.waitForExistence(timeout: 5))
+        pick.tap()
+        XCTAssertTrue(app.staticTexts["toast"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Clarity 0 on the camera'")).firstMatch.waitForExistence(timeout: 10))
+        app.navigationBars.buttons.firstMatch.tap()
+
+        let clarity = app.switches["camera.clarity"]
+        for _ in 0..<4 where !clarity.isHittable { app.swipeUp() }
+        XCTAssertEqual(clarity.value as? String, "0")
+        clarity.switches.firstMatch.tap()
+        let ask = app.alerts["Turn on Clarity?"]
+        XCTAssertTrue(ask.waitForExistence(timeout: 5))
+        ask.buttons["No"].tap()
+        XCTAssertEqual(clarity.value as? String, "0")
+
+        clarity.switches.firstMatch.tap()
+        XCTAssertTrue(ask.waitForExistence(timeout: 5))
+        ask.buttons["Yes, Turn On"].tap()
+        let on = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'C3 get their recipe'")).firstMatch
+        XCTAssertTrue(on.waitForExistence(timeout: 15))
+        XCTAssertEqual(clarity.value as? String, "1")
+
+        clarity.switches.firstMatch.tap()      // off: no question
+        let off = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'C3 set to 0'")).firstMatch
+        XCTAssertTrue(off.waitForExistence(timeout: 15))
+        XCTAssertEqual(clarity.value as? String, "0")
+    }
+
     /// Add recipes: pasted links are queued; the same link twice isn't.
     func testAddRecipeLinks() {
         tab(3)
